@@ -1,0 +1,167 @@
+version: "3.3"
+
+services:
+  emby:
+    image: linuxserver/emby:latest
+    container_name: "emby"
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`emby.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.whoami.entrypoints=web"
+    ports:
+      - "${NETWORK_INTERFACE}:8096:8096/tcp"
+      - "${NETWORK_INTERFACE}:8920:8920/tcp"
+    volumes:
+      - /mnt/leftpool/system/multimedia/emby/config:/config
+      - /mnt/leftpool/system/multimedia/emby/system:/mnt/system
+      - /mnt/leftpool/multimedia/movies:/mnt/movies
+      - /mnt/leftpool/multimedia/series:/mnt/series
+      - /mnt/leftpool/multimedia/music:/mnt/music
+      - /mnt/leftpool/multimedia/pictures:/mnt/pictures
+      - /mnt/leftpool/multimedia/phones:/mnt/phones
+      - /mnt/leftpool/multimedia/games:/mnt/games
+    environment:
+      - GID=${APP_USER}
+      - UID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+
+
+
+  # sonarr:
+  #   image: linuxserver/sonarr:latest
+  #   container_name: Sonarr
+  #   networks: 
+  #     - internal
+  #   restart: always
+  #   ports:
+  #     - 8989:8989/tcp
+  #   volumes:
+  #     - /mnt/system-multimedia/sonarr:/config
+  #     - /mnt/multimedia-downloads:/downloads
+  #     - /mnt/multimedia-series:/tv
+  #   environment:
+  #     - PGID=999
+  #     - PUID=999
+  #     - TZ=Europe/Brussels
+
+  # radarr:
+  #   image: linuxserver/radarr:latest
+  #   container_name: Radarr
+  #   networks: 
+  #     - internal
+  #   restart: always
+  #   ports:
+  #     - 7878:7878/tcp
+  #   volumes:
+  #     - /mnt/system-multimedia/radarr:/config
+  #     - /mnt/multimedia-downloads:/downloads
+  #     - /mnt/multimedia-movies:/movies
+  #   environment:
+  #     - PGID=999
+  #     - PUID=999
+  #     - TZ=Europe/Brussels
+
+  # lidarr:
+  #   image: linuxserver/lidarr:latest
+  #   container_name: Lidarr
+  #   networks: 
+  #     - internal
+  #   restart: always
+  #   ports:
+  #     - 8686:8686/tcp
+  #   volumes:
+  #     - /mnt/system-multimedia/lidarr:/config
+  #     - /mnt/multimedia-downloads:/downloads
+  #     - /mnt/multimedia-music:/music
+  #   environment:
+  #     - PGID=999
+  #     - PUID=999
+  #     - TZ=Europe/Brussels
+
+  # nzbhydra2:
+  #   image: linuxserver/nzbhydra2:latest
+  #   container_name: NZBHydra2
+  #   networks: 
+  #     - internal
+  #   restart: always
+  #   ports:
+  #     - 5076:5076/tcp
+  #   volumes:
+  #     - /mnt/system-multimedia/nzbhydra2:/config
+  #     - /mnt/multimedia-downloads:/downloads
+  #   environment:
+  #     - PGID=999
+  #     - PUID=999
+  #     - TZ=Europe/Brussels
+
+  # jackett:
+  #   image: linuxserver/jackett:latest
+  #   container_name: Jackett
+  #   networks: 
+  #     - internal
+  #   restart: always
+  #   ports:
+  #     - 9117:9117/tcp
+  #   volumes:
+  #     - /mnt/system-multimedia/jackett:/config
+  #     - /mnt/multimedia-downloads/watch:/downloads
+  #   environment:
+  #     - PGID=999
+  #     - PUID=999
+  #     - TZ=Europe/Brussels
+
+  # transmission:
+  #   image: supmagc/transmission:latest
+  #   container_name: Transmission
+  #   networks: 
+  #     - internal
+  #   restart: always
+  #   ports:
+  #     - 51413:51413/tcp
+  #     - 9091:9091/tcp
+  #     - 51413:51413/udp
+  #   volumes:
+  #     - /mnt/system-multimedia/transmission:/config
+  #     - /mnt/multimedia-downloads:/downloads
+  #     - /mnt/multimedia-downloads/watch:/watch
+  #   environment:
+  #     - PGID=999
+  #     - PUID=999
+  #     - TZ=Europe/Brussels
+
+  # sabnzbd:
+  #   image: linuxserver/sabnzbd:latest
+  #   container_name: SABnzbd
+  #   networks: 
+  #     - internal
+  #   restart: always
+  #   ports:
+  #     - 8080:8080/tcp
+  #     - 9090:9090/tcp
+  #   volumes:
+  #     - /mnt/system-multimedia/sabnzbd:/config
+  #     - /mnt/multimedia-downloads:/downloads
+  #     - /mnt/multimedia-downloads/sabnzbd/incomplete:/incomplete-downloads
+  #     - /mnt/multimedia-downloads/sabnzbd/complete:/complete-downloads
+  #     - /mnt/multimedia-downloads/watch:/watch
+  #   environment:
+  #     - PGID=999
+  #     - PUID=999
+  #     - TZ=Europe/Brussels
+  
+  # organizr:
+  #   image: organizr/organizr:latest
+  #   container_name: Organizr2
+  #   networks:
+  #     - internal
+  #   restart: always
+  #   ports:
+  #     - 80:80/tcp
+  #   volumes:
+  #     - /mnt/system-multimedia/organiz2:/config
+  #   environment:
+  #     - TZ=Europe/Brussels
+  #     - PGID=999
+  #     - PUID=999
+        

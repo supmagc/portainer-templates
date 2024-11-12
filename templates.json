@@ -1,0 +1,77 @@
+{
+  "version": "2",
+  "templates": [
+    {
+      "type": 3,
+      "title": "Traefik",
+      "description": "Traefik stack for ingress management",
+      "categories": ["system"],
+      "platform": "linux",
+      "logo": "https://raw.githubusercontent.com/supmagc/portainer-templates/refs/heads/master/logos/traefik.png",
+      "repository": {
+        "url": "https://github.com/supmagc/portainer-templates",
+        "stackfile": "docker-compose-traefik.yml"
+      },
+      "administrator_only": true,
+      "env": [
+        {
+          "name": "NETWORK_INTERFACE",
+          "label": "Network Interface",
+          "description": "The network interface on which the traefik stack will be available.",
+          "default": "0.0.0.0"
+        },
+        {
+          "name": "NETWORK_DOMAIN",
+          "label": "Network Domain",
+          "description": "The base domain for the services in the traefik stack.",
+          "default": "home.local"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "title": "Multimedia",
+      "description": "Multimedia stack for media handling",
+      "categories": ["multimedia"],
+      "platform": "linux",
+      "logo": "https://raw.githubusercontent.com/supmagc/portainer-templates/refs/heads/master/logos/emby.png",
+      "repository": {
+        "url": "https://github.com/supmagc/portainer-templates",
+        "stackfile": "docker-compose-multimedia.yml"
+      },
+      "administrator_only": true,
+      "env": [
+        {
+          "name": "NETWORK_INTERFACE",
+          "label": "Network Interface",
+          "description": "The network interface on which the multimedia stack will be available.",
+          "default": "0.0.0.0"
+        },
+        {
+          "name": "NETWORK_DOMAIN",
+          "label": "Network Domain",
+          "description": "The base domain for the services in the multimedia stack.",
+          "default": "home.local"
+        },
+        {
+          "name": "APP_USER",
+          "label": "Application User",
+          "description": "The user id to run the applications in the multimedia stack.",
+          "default": "home.local"
+        },
+        {
+          "name": "APP_GROUP",
+          "label": "Application Usergroup",
+          "description": "The usergroup id to run the applications in the multimedia stack.",
+          "default": "home.local"
+        },
+        {
+          "name": "APP_TIMEZONE",
+          "label": "Application Timezone",
+          "description": "The timezone for the applications in the multimedia stack.",
+          "default": "Europe/Brussels"
+        }
+      ]
+    }
+  ]
+}
