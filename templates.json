@@ -1,8 +1,9 @@
 {
-  "version": "2",
+  "version": "3",
   "templates": [
     {
-      "type": 3,
+      "id": 1,
+      "type": 2,
       "title": "Traefik",
       "description": "Traefik stack for ingress management",
       "categories": ["system"],
@@ -29,7 +30,8 @@
       ]
     },
     {
-      "type": 3,
+      "id": 2,
+      "type": 2,
       "title": "Multimedia",
       "description": "Multimedia stack for media handling",
       "categories": ["multimedia"],
@@ -57,13 +59,13 @@
           "name": "APP_USER",
           "label": "Application User",
           "description": "The user id to run the applications in the multimedia stack.",
-          "default": "home.local"
+          "default": "910"
         },
         {
           "name": "APP_GROUP",
           "label": "Application Usergroup",
           "description": "The usergroup id to run the applications in the multimedia stack.",
-          "default": "home.local"
+          "default": "910"
         },
         {
           "name": "APP_TIMEZONE",
