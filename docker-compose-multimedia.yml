@@ -3,15 +3,15 @@ version: "3.3"
 services:
   emby:
     image: linuxserver/emby:latest
-    container_name: "emby"
+    container_name: emby
     restart: always
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.whoami.rule=Host(`emby.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.whoami.entrypoints=web"
+      - "traefik.http.routers.emby.rule=Host(`emby.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.emby.entrypoints=web"
     ports:
-      - "${NETWORK_INTERFACE}:8096:8096/tcp"
-      - "${NETWORK_INTERFACE}:8920:8920/tcp"
+      - ${NETWORK_INTERFACE}:8096:8096/tcp
+      - ${NETWORK_INTERFACE}:8920:8920/tcp
     volumes:
       - /mnt/leftpool/system/multimedia/emby/config:/config
       - /mnt/leftpool/system/multimedia/emby/system:/mnt/system
@@ -26,58 +26,62 @@ services:
       - UID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
 
+  sonarr:
+    image: linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarr.rule=Host(`sonarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.sonarr.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:8989:8989/tcp
+    volumes:
+      - /mnt/leftpool/system/multimedia/sonarr:/config
+      - /mnt/leftpool/multimedia/downloads:/downloads
+      - /mnt/leftpool/multimedia/series:/tv
+    environment:
+      - GID=${APP_USER}
+      - UID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
 
+  radarr:
+    image: linuxserver/radarr:latest
+    container_name: radarr
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.radarr.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:7878:7878/tcp
+    volumes:
+      - /mnt/leftpool/system/multimedia/radarr:/config
+      - /mnt/leftpool/multimedia/downloads:/downloads
+      - /mnt/leftpool/multimedia/movies:/movies
+    environment:
+      - GID=${APP_USER}
+      - UID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
 
-  # sonarr:
-  #   image: linuxserver/sonarr:latest
-  #   container_name: Sonarr
-  #   networks: 
-  #     - internal
-  #   restart: always
-  #   ports:
-  #     - 8989:8989/tcp
-  #   volumes:
-  #     - /mnt/system-multimedia/sonarr:/config
-  #     - /mnt/multimedia-downloads:/downloads
-  #     - /mnt/multimedia-series:/tv
-  #   environment:
-  #     - PGID=999
-  #     - PUID=999
-  #     - TZ=Europe/Brussels
-
-  # radarr:
-  #   image: linuxserver/radarr:latest
-  #   container_name: Radarr
-  #   networks: 
-  #     - internal
-  #   restart: always
-  #   ports:
-  #     - 7878:7878/tcp
-  #   volumes:
-  #     - /mnt/system-multimedia/radarr:/config
-  #     - /mnt/multimedia-downloads:/downloads
-  #     - /mnt/multimedia-movies:/movies
-  #   environment:
-  #     - PGID=999
-  #     - PUID=999
-  #     - TZ=Europe/Brussels
-
-  # lidarr:
-  #   image: linuxserver/lidarr:latest
-  #   container_name: Lidarr
-  #   networks: 
-  #     - internal
-  #   restart: always
-  #   ports:
-  #     - 8686:8686/tcp
-  #   volumes:
-  #     - /mnt/system-multimedia/lidarr:/config
-  #     - /mnt/multimedia-downloads:/downloads
-  #     - /mnt/multimedia-music:/music
-  #   environment:
-  #     - PGID=999
-  #     - PUID=999
-  #     - TZ=Europe/Brussels
+  lidarr:
+    image: linuxserver/lidarr:latest
+    container_name: lidarr
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lidarr.rule=Host(`lidarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.lidarr.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:8686:8686/tcp
+    volumes:
+      - /mnt/leftpool/system/multimedia/lidarr:/config
+      - /mnt/leftpool/multimedia/downloads:/downloads
+      - /mnt/leftpool/multimedia/music:/music
+    environment:
+      - GID=${APP_USER}
+      - UID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
 
   # nzbhydra2:
   #   image: linuxserver/nzbhydra2:latest
