@@ -3,7 +3,7 @@
   "templates": [
     {
       "id": 1,
-      "type": 2,
+      "type": 3,
       "title": "Traefik",
       "description": "Traefik stack for ingress management",
       "categories": ["system"],
@@ -31,7 +31,7 @@
     },
     {
       "id": 2,
-      "type": 2,
+      "type": 3,
       "title": "Multimedia",
       "description": "Multimedia stack for media handling",
       "categories": ["multimedia"],
