@@ -6,6 +6,7 @@ services:
     container_name: emby
     restart: always
     labels:
+      - "diun.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.emby.rule=Host(`emby.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.emby.entrypoints=web"
@@ -22,8 +23,8 @@ services:
       - /mnt/leftpool/multimedia/phones:/mnt/phones
       - /mnt/leftpool/multimedia/games:/mnt/games
     environment:
-      - GID=${APP_USER}
-      - UID=${APP_GROUP}
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
 
   sonarr:
@@ -31,6 +32,7 @@ services:
     container_name: sonarr
     restart: always
     labels:
+      - "diun.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.sonarr.rule=Host(`sonarr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.sonarr.entrypoints=web"
@@ -41,8 +43,8 @@ services:
       - /mnt/leftpool/multimedia/downloads:/downloads
       - /mnt/leftpool/multimedia/series:/tv
     environment:
-      - GID=${APP_USER}
-      - UID=${APP_GROUP}
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
 
   radarr:
@@ -50,6 +52,7 @@ services:
     container_name: radarr
     restart: always
     labels:
+      - "diun.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.radarr.rule=Host(`radarr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.radarr.entrypoints=web"
@@ -60,8 +63,8 @@ services:
       - /mnt/leftpool/multimedia/downloads:/downloads
       - /mnt/leftpool/multimedia/movies:/movies
     environment:
-      - GID=${APP_USER}
-      - UID=${APP_GROUP}
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
 
   lidarr:
@@ -69,6 +72,7 @@ services:
     container_name: lidarr
     restart: always
     labels:
+      - "diun.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.lidarr.rule=Host(`lidarr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.lidarr.entrypoints=web"
@@ -79,93 +83,90 @@ services:
       - /mnt/leftpool/multimedia/downloads:/downloads
       - /mnt/leftpool/multimedia/music:/music
     environment:
-      - GID=${APP_USER}
-      - UID=${APP_GROUP}
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
 
-  # nzbhydra2:
-  #   image: linuxserver/nzbhydra2:latest
-  #   container_name: NZBHydra2
-  #   networks: 
-  #     - internal
-  #   restart: always
-  #   ports:
-  #     - 5076:5076/tcp
-  #   volumes:
-  #     - /mnt/system-multimedia/nzbhydra2:/config
-  #     - /mnt/multimedia-downloads:/downloads
-  #   environment:
-  #     - PGID=999
-  #     - PUID=999
-  #     - TZ=Europe/Brussels
+  sabnzbd:
+    image: linuxserver/sabnzbd:latest
+    container_name: sabnzbd
+    restart: always
+    labels:
+      - "diun.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.sabnzbd.entrypoints=web"
+      - "traefik.http.services.sabnzbd-multimedia.loadbalancer.server.port=8181"
+    ports:
+      - ${NETWORK_INTERFACE}:8181:8181/tcp
+    volumes:
+      - /mnt/leftpool/system/multimedia/sabnzbd:/config
+      - /mnt/leftpool/multimedia/downloads:/downloads
+      - /mnt/leftpool/multimedia/downloads/watch:/watch
+    environment:
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
 
-  # jackett:
-  #   image: linuxserver/jackett:latest
-  #   container_name: Jackett
-  #   networks: 
-  #     - internal
-  #   restart: always
-  #   ports:
-  #     - 9117:9117/tcp
-  #   volumes:
-  #     - /mnt/system-multimedia/jackett:/config
-  #     - /mnt/multimedia-downloads/watch:/downloads
-  #   environment:
-  #     - PGID=999
-  #     - PUID=999
-  #     - TZ=Europe/Brussels
+  qbittorrent:
+    image: linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: always
+    labels:
+      - "diun.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.qbittorrent.entrypoints=web"
+      - "traefik.http.services.qbittorrent-multimedia.loadbalancer.server.port=8282"
+    ports:
+      - ${NETWORK_INTERFACE}:8282:8282/tcp
+      - ${NETWORK_INTERFACE}:6881:6881/tcp
+      - ${NETWORK_INTERFACE}:6881:6881/udp
+    volumes:
+      - /mnt/leftpool/system/multimedia/qbittorrent:/config
+      - /mnt/leftpool/multimedia/downloads:/downloads
+      - /mnt/leftpool/multimedia/downloads/watch:/watch
+    environment:
+      - WEBUI_PORT=8282
+      - TORRENTING_PORT=6881
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
 
-  # transmission:
-  #   image: supmagc/transmission:latest
-  #   container_name: Transmission
-  #   networks: 
-  #     - internal
-  #   restart: always
-  #   ports:
-  #     - 51413:51413/tcp
-  #     - 9091:9091/tcp
-  #     - 51413:51413/udp
-  #   volumes:
-  #     - /mnt/system-multimedia/transmission:/config
-  #     - /mnt/multimedia-downloads:/downloads
-  #     - /mnt/multimedia-downloads/watch:/watch
-  #   environment:
-  #     - PGID=999
-  #     - PUID=999
-  #     - TZ=Europe/Brussels
+  prowlarr:
+    image: linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: always
+    labels:
+      - "diun.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.prowlarr.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:9696:9696/tcp
+    volumes:
+      - /mnt/leftpool/system/multimedia/prowlarr:/config
+    environment:
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
 
-  # sabnzbd:
-  #   image: linuxserver/sabnzbd:latest
-  #   container_name: SABnzbd
-  #   networks: 
-  #     - internal
-  #   restart: always
-  #   ports:
-  #     - 8080:8080/tcp
-  #     - 9090:9090/tcp
-  #   volumes:
-  #     - /mnt/system-multimedia/sabnzbd:/config
-  #     - /mnt/multimedia-downloads:/downloads
-  #     - /mnt/multimedia-downloads/sabnzbd/incomplete:/incomplete-downloads
-  #     - /mnt/multimedia-downloads/sabnzbd/complete:/complete-downloads
-  #     - /mnt/multimedia-downloads/watch:/watch
-  #   environment:
-  #     - PGID=999
-  #     - PUID=999
-  #     - TZ=Europe/Brussels
-  
-  # organizr:
-  #   image: organizr/organizr:latest
-  #   container_name: Organizr2
-  #   networks:
-  #     - internal
-  #   restart: always
-  #   ports:
-  #     - 80:80/tcp
-  #   volumes:
-  #     - /mnt/system-multimedia/organiz2:/config
-  #   environment:
-  #     - TZ=Europe/Brussels
-  #     - PGID=999
-  #     - PUID=999
-        
+  organizr:
+    image: organizr/organizr:latest
+    container_name: organizr
+    restart: always
+    labels:
+      - "diun.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.organizr.rule=Host(`organizr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.organizr.entrypoints=web"
+      - "traefik.http.routers.organizr-empty.rule=Host(`${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.organizr-empty.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:81:80/tcp
+    volumes:
+      - /mnt/leftpool/system/multimedia/organizr:/config
+    environment:
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}

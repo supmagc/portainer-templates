@@ -11,6 +11,8 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entryPoints.web.address=:80"
+    labels:
+      - "diun.enable=true"
     ports:
       - "${NETWORK_INTERFACE}:80:80"
       - "${NETWORK_INTERFACE}:8080:8080"
@@ -21,6 +23,7 @@ services:
     image: "traefik/whoami"
     container_name: "whoami"
     labels:
+      - "diun.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.whoami.rule=Host(`whoami.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.whoami.entrypoints=web"
