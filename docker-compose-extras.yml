@@ -1,0 +1,71 @@
+version: "3.3"
+
+name: extras
+
+networks:
+  default:
+    driver: bridge
+
+services:
+  stash:
+    image: stashapp/stash:latest
+    container_name: stash
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.stash.rule=Host(`stash.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.stash.entrypoints=web"
+    ports:
+      - "${NETWORK_INTERFACE}:9999:9999"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /mnt/leftpool/system/extras/stash/config:/root/.stash
+      - /mnt/leftpool/extras:/data
+      - /mnt/leftpool/system/extras/stash/metadata:/metadata
+      - /mnt/leftpool/system/extras/stash/cache:/cache
+      - /mnt/leftpool/system/extras/stash/blobs:/blobs
+      - /mnt/leftpool/system/extras/stash/generated:/generated
+    environment:
+      - STASH_STASH=/data/
+      - STASH_GENERATED=/generated/
+      - STASH_METADATA=/metadata/
+      - STASH_CACHE=/cache/
+      - STASH_PORT=9999
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+
+  namer:
+    image: ghcr.io/theporndatabase/namer:latest
+    container_name: namer
+    user: "930:930"
+    networks:
+      - default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.namer.rule=Host(`namer.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.namer.entrypoints=web"
+    ports:
+      - "${NETWORK_INTERFACE}:6980:6980"
+    environment:
+      - PUID=${APP_USER}
+      - PGID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+      - NAMER_CONFIG=/config/namer.cfg
+    volumes:
+      - /mnt/leftpool/system/extras/namer:/config
+      - /mnt/leftpool/extras:/data
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://namer:6980/api/healthcheck || exit 1" ]
+      interval: 1m
+      timeout: 30s

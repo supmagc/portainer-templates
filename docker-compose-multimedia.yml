@@ -1,12 +1,23 @@
 version: "3.3"
 
+name: multimedia
+
+networks:
+  default:
+    driver: bridge
+  utilities_default:
+    external: true
+
 services:
   emby:
     image: linuxserver/emby:latest
     container_name: emby
+    networks:
+      - default
+    pull_policy: missing
     restart: always
     labels:
-      - "diun.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.emby.rule=Host(`emby.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.emby.entrypoints=web"
@@ -30,9 +41,12 @@ services:
   sonarr:
     image: linuxserver/sonarr:latest
     container_name: sonarr
+    networks:
+      - default
+    pull_policy: missing
     restart: always
     labels:
-      - "diun.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.sonarr.rule=Host(`sonarr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.sonarr.entrypoints=web"
@@ -50,9 +64,12 @@ services:
   radarr:
     image: linuxserver/radarr:latest
     container_name: radarr
+    networks:
+      - default
+    pull_policy: missing
     restart: always
     labels:
-      - "diun.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.radarr.rule=Host(`radarr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.radarr.entrypoints=web"
@@ -70,9 +87,12 @@ services:
   lidarr:
     image: linuxserver/lidarr:latest
     container_name: lidarr
+    networks:
+      - default
+    pull_policy: missing
     restart: always
     labels:
-      - "diun.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.lidarr.rule=Host(`lidarr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.lidarr.entrypoints=web"
@@ -90,9 +110,12 @@ services:
   sabnzbd:
     image: linuxserver/sabnzbd:latest
     container_name: sabnzbd
+    networks:
+      - default
+    pull_policy: missing
     restart: always
     labels:
-      - "diun.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.sabnzbd.entrypoints=web"
@@ -111,9 +134,12 @@ services:
   qbittorrent:
     image: linuxserver/qbittorrent:latest
     container_name: qbittorrent
+    networks:
+      - default
+    pull_policy: missing
     restart: always
     labels:
-      - "diun.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.qbittorrent.entrypoints=web"
@@ -136,9 +162,13 @@ services:
   prowlarr:
     image: linuxserver/prowlarr:latest
     container_name: prowlarr
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
     restart: always
     labels:
-      - "diun.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.prowlarr.entrypoints=web"
@@ -154,9 +184,12 @@ services:
   organizr:
     image: organizr/organizr:latest
     container_name: organizr
+    networks:
+      - default
+    pull_policy: missing
     restart: always
     labels:
-      - "diun.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.organizr.rule=Host(`organizr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.organizr.entrypoints=web"
@@ -169,4 +202,28 @@ services:
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+
+  spotweb:
+    image: jgeusebroek/spotweb:latest
+    container_name: spotweb
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.spotweb.rule=Host(`spotweb.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.spotweb.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:6767:80/tcp
+    environment:
+      - "SPOTWEB_DB_TYPE=pdo_mysql"
+      - "SPOTWEB_DB_HOST=mariadb"
+      - "SPOTWEB_DB_NAME=spotweb"
+      - "SPOTWEB_DB_USER=spotweb"
+      - "SPOTWEB_DB_PASS=${SPOTWEB_PASSWORD}"
+      - "SPOTWEB_CRON_RETRIEVE=*/15 * * * *"
       - TZ=${APP_TIMEZONE}

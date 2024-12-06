@@ -1,0 +1,135 @@
+version: "3.3"
+
+name: monitoring
+
+networks:
+  default:
+    driver: bridge
+  utilities_default:
+    external: true
+
+services:
+  zabbix-server:
+    image: zabbix/zabbix-server-mysql:latest
+    container_name: zabbix-server
+    hostname: zabbix-server
+    networks: 
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.tcp.routers.zabbix-server-tcp.rule=HostSNI(`*`)"
+      - "traefik.tcp.routers.zabbix-server-tcp.entrypoints=zabbix-tcp"
+      - "traefik.tcp.routers.zabbix-server-tcp.service=zabbix-server-tcp"
+      - "traefik.tcp.services.zabbix-server-tcp.loadbalancer.server.port=10051"
+      - "traefik.udp.routers.zabbix-server-udp.entrypoints=zabbix-udp"
+      - "traefik.udp.routers.zabbix-server-udp.service=zabbix-server-udp"
+      - "traefik.udp.services.zabbix-server-udp.loadbalancer.server.port=10051"
+    secrets:
+      - zabbix-mariadb-password
+      - zabbix-mariadb-user
+    volumes:
+      - /mnt/leftpool/system/processes/zabbix/server:/var/lib/zabbix
+      - /mnt/leftpool/system/processes/zabbix/snmptraps:/var/lib/zabbix/snmptraps
+      - /mnt/leftpool/system/processes/zabbix/export:/var/lib/zabbix/export
+    environment:
+      DB_SERVER_HOST: mariadb
+      MYSQL_USER_FILE: /run/secrets/zabbix-mariadb-user
+      MYSQL_PASSWORD_FILE: /run/secrets/zabbix-mariadb-password
+      MYSQL_DATABASE: zabbix
+
+  zabbix-web-nginx-mysql:
+    image: zabbix/zabbix-web-nginx-mysql:latest
+    container_name: zabbix-web
+    hostname: zabbix-web
+    networks: 
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: always
+    depends_on:
+      - zabbix-server
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.zabbix.rule=Host(`zabbix.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.zabbix.entrypoints=web"
+    secrets:
+      - zabbix-mariadb-password
+      - zabbix-mariadb-user
+    ports:
+      - "${NETWORK_INTERFACE}:5454:8080"
+    environment:
+      DB_SERVER_HOST: mariadb
+      MYSQL_USER_FILE: /run/secrets/zabbix-mariadb-user
+      MYSQL_PASSWORD_FILE: /run/secrets/zabbix-mariadb-password
+      MYSQL_DATABASE: zabbix
+      ZBX_SERVER_HOST: zabbix-server
+      PHP_TZ: ${APP_TIMEZONE}
+
+  zabbix-agent:
+    image: zabbix/zabbix-agent2:latest
+    container_name: zabbix-agent
+    hostname: zabbix-agent
+    privileged: true
+    networks: 
+      - default
+    pull_policy: missing
+    restart: always
+    depends_on:
+      - zabbix-server
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/rootfs:ro
+      - /var/run:/var/run
+    environment:
+      ZBX_HOSTNAME: Zabbix server
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      ZBX_PASSIVE_ALLOW: true
+      ZBX_ACTIVE_ALLOW: true
+
+  zabbix-snmp-traps:
+    image: zabbix/zabbix-snmptraps:latest
+    container_name: zabbix-snmptraps
+    hostname: zabbix-snmptraps
+    networks: 
+      - default
+    pull_policy: missing
+    restart: always
+    depends_on:
+      - zabbix-server
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /mnt/leftpool/system/processes/zabbix/snmptraps:/var/lib/zabbix/snmptraps
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    networks: 
+      - default
+    command:
+      #- "--debug"
+      - "--cleanup"
+      - "--label-enable"
+    pull_policy: missing
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - "WATCHTOWER_SCHEDULE=0 0 4 * * *"
+      - "WATCHTOWER_NOTIFICATION_URL=pushover://:${PUSHOVER_TOKEN}@${PUSHOVER_USER}/?"
+
+secrets:
+  zabbix-mariadb-user:
+    file: /mnt/leftpool/system/processes/secrets/zabbix-mariadb-user.txt
+  zabbix-mariadb-password:
+    file: /mnt/leftpool/system/processes/secrets/zabbix-mariadb-password.txt
+  

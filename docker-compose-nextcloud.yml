@@ -1,0 +1,34 @@
+version: "3.3"
+
+name: nextcloud
+
+networks:
+  default:
+    driver: bridge
+  utilities_default:
+    external: true
+
+services:
+  nextcloud:
+    image: "nextcloud:stable"
+    container_name: "nextcloud"
+    user: "${APP_USER}:${APP_GROUP}"
+    networks:
+      - default
+      - utilities_default
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.traefik.entrypoints=web"
+    ports:
+      - "${NETWORK_INTERFACE}:5555:80"
+    volumes:
+      - "/mnt/leftpool/system/processes/nextcloud:/var/www/html"
+    environment:
+      - "MYSQL_DATABASE=nextcloud"
+      - "MYSQL_HOST=mariadb"
+      - "MYSQL_USER=nextcloud"
+      - "MYSQL_PASSWORD="
+      - "NEXTCLOUD_ADMIN_USER_FILE=${ADMIN_USER}"
+      - "NEXTCLOUD_ADMIN_PASSWORD_FILE=${ADMIN_PASSWORD}"

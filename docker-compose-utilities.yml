@@ -1,0 +1,71 @@
+version: "3.3"
+
+name: utilities
+
+networks:
+  default:
+    driver: bridge
+
+services:
+  flaresolverr:
+    image: "flaresolverr/flaresolverr:latest"
+    container_name: flaresolverr
+    networks:
+      - default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    ports:
+      - ${NETWORK_INTERFACE}:8191:8191/tcp
+    environment:
+      - LOG_LEVEL=info
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+      - TZ=${APP_TIMEZONE}
+
+  mariadb:
+    image: mariadb:lts
+    container_name: mariadb
+    networks:
+      - default
+    pull_policy: missing
+    restart: always
+    user: ${APP_USER}:${APP_GROUP}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    ports:
+      - ${NETWORK_INTERFACE}:3306:3306/tcp
+    volumes:
+      - /mnt/leftpool/system/processes/mariadb:/var/lib/mysql:Z
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    networks:
+      - default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.phpmyadmin.rule=Host(`phpmyadmin.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.phpmyadmin.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:3307:80/tcp
+    environment:
+      - PMA_HOST=mariadb
+      - PMA_PMADB=pmadb
+      - PMA_ARBITRARY=0
+  
