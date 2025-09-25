@@ -5,13 +5,18 @@ name: extras
 networks:
   default:
     driver: bridge
+  multimedia_default:
+    external: true
+  utilities_default:
+    external: true
 
 services:
   stash:
-    image: stashapp/stash:latest
+    image: supmagc/stapp:latest
     container_name: stash
     networks:
       - default
+      - utilities_default
     pull_policy: missing
     restart: unless-stopped
     labels:
@@ -23,6 +28,7 @@ services:
       - "${NETWORK_INTERFACE}:9999:9999"
     volumes:
       - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
       - /mnt/leftpool/system/extras/stash/config:/root/.stash
       - /mnt/leftpool/extras:/data
       - /mnt/leftpool/system/extras/stash/metadata:/metadata
@@ -35,6 +41,8 @@ services:
       - STASH_METADATA=/metadata/
       - STASH_CACHE=/cache/
       - STASH_PORT=9999
+      - USER=${APP_USER}
+      - GROUP=${APP_GROUP}
     logging:
       driver: "json-file"
       options:
@@ -45,7 +53,6 @@ services:
   namer:
     image: ghcr.io/theporndatabase/namer:latest
     container_name: namer
-    user: "930:930"
     networks:
       - default
     pull_policy: missing
@@ -69,3 +76,28 @@ services:
       test: [ "CMD-SHELL", "curl -f http://namer:6980/api/healthcheck || exit 1" ]
       interval: 1m
       timeout: 30s
+
+  whisparr:
+    image: ghcr.io/hotio/whisparr
+    container_name: whisparr
+    networks:
+      - default
+      - multimedia_default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.whisparr.rule=Host(`whisparr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.whisparr.entrypoints=web"
+    ports:
+      - "${NETWORK_INTERFACE}:6969:6969"
+    environment:
+      - PUID=${APP_USER}
+      - PGID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+      - UMASK=002
+    volumes:
+      - /mnt/leftpool/system/extras/whisparr:/config
+      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/leftpool/extras:/data

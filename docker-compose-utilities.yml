@@ -13,16 +13,33 @@ services:
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-    ports:
-      - ${NETWORK_INTERFACE}:8191:8191/tcp
     environment:
       - LOG_LEVEL=info
       - LOG_HTML=false
       - CAPTCHA_SOLVER=none
       - TZ=${APP_TIMEZONE}
+
+  chromedp:
+    image: chromedp/headless-shell:latest
+    container_name: chromedp
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - CHROMEDP_DISABLE_GPU=true
+      - CHROMEDP_DISABLE_DEV_SHM=false
+      - CHROMEDP_DISABLE_SANDBOX=true
+      - CHROMEDP_DISABLE_XVFB=false
+      - CHROMEDP_ENABLE_HEADLESS=true
+      - CHROMEDP_ENABLE_NO_SANDBOX=true
+      - CHROMEDP_ENABLE_XVFB=false
 
   mariadb:
     image: mariadb:lts
@@ -30,7 +47,7 @@ services:
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     user: ${APP_USER}:${APP_GROUP}
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
@@ -50,13 +67,40 @@ services:
       - PUID=${APP_GROUP}
       - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
 
+  mariadb-backup:
+    image: databack/mysql-backup:latest
+    container_name: mariadb-backup
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    user: ${APP_USER_BACKUP}:${APP_GROUP_BACKUP}
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    secrets:
+      - mariadb-backup-pass
+    volumes:
+      - /mnt/rightpool/backup/automated/mariadb:/backup
+    environment:
+      DB_SERVER: mariadb
+      DB_PORT: 3306
+      DB_USER: backup
+      DB_PASS_FILE: /run/secrets/mariadb-backup-pass
+      DB_DUMP_INCLUDE: digikam,nextcloud,onlyoffice
+      #DB_DUMP_ONCE: true
+      DB_DUMP_CRON: "0 4 * * *"
+      DB_DUMP_RETENTION: 7d
+      DB_DUMP_TARGET: /backup
+      TZ: ${APP_TIMEZONE}
+    command: dump
+
   phpmyadmin:
     image: phpmyadmin:latest
     container_name: phpmyadmin
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -68,4 +112,66 @@ services:
       - PMA_HOST=mariadb
       - PMA_PMADB=pmadb
       - PMA_ARBITRARY=0
-  
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning ping | grep PONG"]
+      start_period: 10s
+      interval: 30s
+      retries: 3
+      timeout: 3s
+
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: rabbitmq
+    hostname: rabbitmq
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.rabbitmq.rule=Host(`rabbitmq.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.rabbitmq.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:15672:15672/tcp
+    volumes:
+      - /mnt/leftpool/system/processes/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - /mnt/leftpool/system/processes/rabbitmq/data/:/var/lib/rabbitmq/
+      - /mnt/leftpool/system/processes/rabbitmq/log/:/var/log/rabbitmq
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "5672" ]
+      interval: 5s
+      timeout: 15s
+      retries: 1
+
+  dupeguru:
+    image: jlesage/dupeguru:latest
+    container_name: dupeguru
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.dupeguru.rule=Host(`dupeguru.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.dupeguru.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:5800:5800/tcp
+    volumes:
+      - /mnt/leftpool/system/processes/dupeguru:/config:rw
+      - /mnt/leftpool/system/processes/nextcloud:/storage:rw
+
+secrets:
+  mariadb-backup-pass:
+    file: /mnt/leftpool/system/processes/secrets/mariadb-backup-pass.txt

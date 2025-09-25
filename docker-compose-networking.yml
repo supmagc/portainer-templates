@@ -1,0 +1,122 @@
+version: "3.3"
+
+name: networking
+
+networks:
+  default:
+    driver: bridge
+  multimedia_default:
+    external: true
+  utilities_default:
+    external: true
+  extras_default:
+    external: true
+  monitoring_default:
+    external: true
+  nextcloud_default:
+    external: true
+
+services:
+  traefik:
+    image: "traefik:v3.2"
+    container_name: "traefik"
+    networks:
+      - default
+      - multimedia_default
+      - utilities_default
+      - extras_default
+      - monitoring_default
+      - nextcloud_default
+    command:
+      #- "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entryPoints.web.address=:80"
+      - "--entryPoints.web-secure.address=:443"
+      - "--entryPoints.zabbix-tcp.address=:10051"
+      - "--entryPoints.zabbix-udp.address=:10051/udp"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.traefik.entrypoints=web"
+      - "traefik.http.services.traefik-traefik.loadbalancer.server.port=8080"
+    ports:
+      - "${NETWORK_INTERFACE}:80:80"
+      - "${NETWORK_INTERFACE}:443:443"
+      - "${NETWORK_INTERFACE}:8080:8080"
+      - "${NETWORK_INTERFACE}:10051:10051/tcp"
+      - "${NETWORK_INTERFACE}:10051:10051/udp"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  whoami:
+    image: "traefik/whoami"
+    container_name: "whoami"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.whoami.entrypoints=web"
+
+  # step-ca:
+  #   image: smallstep/step-ca:latest
+  #   container_name: step-ca
+  #   networks:
+  #     - default
+  #   restart: unless-stopped
+  #   user: ${APP_USER}:${APP_GROUP}
+  #   labels:
+  #     - "com.centurylinklabs.watchtower.enable=true"
+  #   ports:
+  #     - "${NETWORK_INTERFACE}:9000:9000"
+  #   volumes:
+  #     - /mnt/leftpool/system/processes/step:/home/step
+  #   environment:
+  #     - DOCKER_STEPCA_INIT_NAME=Local CA
+  #     - DOCKER_STEPCA_INIT_DNS=step-ca
+  #     - DOCKER_STEPCA_INIT_REMOTE_MANAGEMENT=true
+  #     - DOCKER_STEPCA_PASSWORD_FILE=/home/step/secrets/password.txt
+  #   command: ["step-ca", "/home/step/config/ca.json"]
+
+  certmate:
+    image: fabriziosalmi/certmate:latest-amd64
+    container_name: certmate
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    user: ${APP_USER}:${APP_GROUP}
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.certmate.rule=Host(`certmate.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.certmate.entrypoints=web"
+    ports:
+      - "${NETWORK_INTERFACE}:8000:8000"
+    environment:
+      # API & security
+      API_BEARER_TOKEN: "${CERTMATE_API_TOKEN}"         # set this in your .env
+      SECRET_KEY: "${CERTMATE_SECRET_KEY}"           # Flask secret key
+      FLASK_ENV: "production"
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      #   FLASK_DEBUG: "false"
+
+      # DNS Provider credentials: example for Cloudflare
+      # CLOUDFLARE_TOKEN: "${CLOUDFLARE_TOKEN}"          # required if using Cloudflare provider
+      # For other providers, uncomment/configure:
+      # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION
+      # AZURE_SUBSCRIPTION_ID, AZURE_CLIENT_ID, etc.
+      # etc. as per the provider you use. :contentReference[oaicite:1]{index=1}
+
+    volumes:
+      - /mnt/leftpool/system/processes/certmate/certs:/app/certificates:rw
+      - /mnt/leftpool/system/processes/certmate/config:/app/data:rw
+      - /mnt/leftpool/system/processes/certmate/logs:/app/logs:rw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

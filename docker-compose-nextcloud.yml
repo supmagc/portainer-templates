@@ -10,25 +10,166 @@ networks:
 
 services:
   nextcloud:
-    image: "nextcloud:stable"
+    image: "supmagc/nextcloud:latest"
     container_name: "nextcloud"
     user: "${APP_USER}:${APP_GROUP}"
     networks:
       - default
       - utilities_default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    secrets:
+      - nextcloud-mariadb-host
+      - nextcloud-mariadb-database
+      - nextcloud-mariadb-user
+      - nextcloud-mariadb-password
+      - nextcloud-admin-user
+      - nextcloud-admin-password
+    volumes:
+      - "/dev/dri:/dev/dri"
+      - "/mnt/leftpool/nextcloud:/var/www/html/data:z"
+      - "/mnt/leftpool/system/nextcloud/app/html:/var/www/html:z"
+      - "/mnt/leftpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z"
+    environment:
+      - "MYSQL_DATABASE_FILE=/run/secrets/nextcloud-mariadb-database"
+      - "MYSQL_HOST_FILE=/run/secrets/nextcloud-mariadb-host"
+      - "MYSQL_USER_FILE=/run/secrets/nextcloud-mariadb-user"
+      - "MYSQL_PASSWORD_FILE=/run/secrets/nextcloud-mariadb-password"
+      - "NEXTCLOUD_ADMIN_USER_FILE=/run/secrets/nextcloud-admin-user"
+      - "NEXTCLOUD_ADMIN_PASSWORD_FILE=/run/secrets/nextcloud-admin-password"
+      - "NEXTCLOUD_TRUSTED_DOMAINS=${NETWORK_INTERFACE}:5659 nextcloud.bellecerise.local"
+      - "REDIS_HOST=redis"
+      - "REDIS_HOST_PORT=6379"
+
+  cron:
+    image: "supmagc/nextcloud:latest"
+    container_name: "nextcloud-cron"
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - "/mnt/leftpool/nextcloud:/var/www/html/data:z"
+      - "/mnt/leftpool/system/nextcloud/app/html:/var/www/html:z"
+      - "/mnt/leftpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z,ro"
+      - "/mnt/leftpool/system/nextcloud/app/cron.sh:/cron-custom.sh:ro"
+    environment:
+      - "UID=${APP_USER}"
+      - "GID=${APP_GROUP}"
+      - "REDIS_HOST=redis"
+      - "REDIS_HOST_PORT=6379"
+    entrypoint: /cron-custom.sh
+
+  web:
+    image: caddy:2.8.4
+    container_name: nextcloud-web
+    user: "${APP_USER}:${APP_GROUP}"
+    networks:
+      - default
+    pull_policy: missing
+    restart: always
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.traefik.entrypoints=web"
+      - "traefik.http.routers.nextcloud-web.rule=Host(`${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.nextcloud-web.entrypoints=web"
+    depends_on:
+      - nextcloud
     ports:
-      - "${NETWORK_INTERFACE}:5555:80"
+      - "${NETWORK_INTERFACE}:5659:80"
     volumes:
-      - "/mnt/leftpool/system/processes/nextcloud:/var/www/html"
+      - /mnt/leftpool/system/nextcloud/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - /mnt/leftpool/system/nextcloud/caddy/data:/data
+      - /mnt/leftpool/system/nextcloud/caddy/config:/config
+      - /mnt/leftpool/system/nextcloud/app/html:/var/www/html:z,ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "127.0.0.1:2019/metrics"]
+      interval: 10s
+      retries: 3
+      start_period: 5s
+      timeout: 5s
+
+  imaginary:
+    image: "h2non/imaginary:latest"
+    container_name: "imaginary"
+    user: "${APP_USER}:${APP_GROUP}"
+    networks:
+      - default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.imaginaryb.rule=Host(`imaginary.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.imaginary.entrypoints=web"
+    ports:
+      - "${NETWORK_INTERFACE}:9000:9000"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     environment:
-      - "MYSQL_DATABASE=nextcloud"
-      - "MYSQL_HOST=mariadb"
-      - "MYSQL_USER=nextcloud"
-      - "MYSQL_PASSWORD="
-      - "NEXTCLOUD_ADMIN_USER_FILE=${ADMIN_USER}"
-      - "NEXTCLOUD_ADMIN_PASSWORD_FILE=${ADMIN_PASSWORD}"
+      - PORT=9000
+    cap_add:
+      - SYS_NICE
+    tmpfs:
+      - /tmp
+
+  onlyoffice:
+    container_name: onlyoffice
+    image: onlyoffice/documentserver:latest
+#    user: "${APP_USER}:${APP_GROUP}"
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.onlyoffice.rule=Host(`onlyoffice.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.onlyoffice.entrypoints=web"
+    ports:
+      - '${NETWORK_INTERFACE}:5658:80'
+    volumes:
+      - /mnt/leftpool/system/nextcloud/onlyoffice/data:/var/lib/onlyoffice
+      - /mnt/leftpool/system/nextcloud/onlyoffice/log:/var/log/onlyoffice
+    environment:
+      - JWT_SECRET=${ONLYOFFICE_JWT_SECRET}
+      - ONLYOFFICE_HTTPS_HSTS_ENABLED=false
+      - USE_UNAUTHORIZED_STORAGE=true
+      - AMQP_URI=amqp://${ONLYOFFICE_AMQP_USER}:${ONLYOFFICE_AMQP_PASS}@rabbitmq:5672
+      - REDIS_SERVER_HOST=redis
+      - REDIS_SERVER_PORT=6379
+      - DB_TYPE=mariadb
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_USER=${ONLYOFFICE_DB_USER}
+      - DB_PWD=${ONLYOFFICE_DB_PASS}
+      - DB_NAME=onlyoffice
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+secrets:
+  nextcloud-mariadb-host:
+    file: /mnt/leftpool/system/processes/secrets/nextcloud-mariadb-host.txt
+  nextcloud-mariadb-database:
+    file: /mnt/leftpool/system/processes/secrets/nextcloud-mariadb-database.txt
+  nextcloud-mariadb-user:
+    file: /mnt/leftpool/system/processes/secrets/nextcloud-mariadb-user.txt
+  nextcloud-mariadb-password:
+    file: /mnt/leftpool/system/processes/secrets/nextcloud-mariadb-password.txt
+  nextcloud-admin-user:
+    file: /mnt/leftpool/system/processes/secrets/nextcloud-admin-user.txt
+  nextcloud-admin-password:
+    file: /mnt/leftpool/system/processes/secrets/nextcloud-admin-password.txt

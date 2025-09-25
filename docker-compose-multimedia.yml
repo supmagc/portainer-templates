@@ -27,12 +27,13 @@ services:
     volumes:
       - /mnt/leftpool/system/multimedia/emby/config:/config
       - /mnt/leftpool/system/multimedia/emby/system:/mnt/system
-      - /mnt/leftpool/multimedia/movies:/mnt/movies
-      - /mnt/leftpool/multimedia/series:/mnt/series
-      - /mnt/leftpool/multimedia/music:/mnt/music
-      - /mnt/leftpool/multimedia/pictures:/mnt/pictures
+      - /mnt/rightpool/multimedia/movies:/mnt/movies
+      - /mnt/rightpool/multimedia/series:/mnt/series
+      - /mnt/rightpool/multimedia/music:/mnt/music
+      - /mnt/rightpool/multimedia/pictures:/mnt/pictures
       - /mnt/leftpool/multimedia/phones:/mnt/phones
-      - /mnt/leftpool/multimedia/games:/mnt/games
+      - /mnt/rightpool/multimedia/games:/mnt/games
+      - /mnt/rightpool/backup/automated/emby:/mnt/backup
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
@@ -54,8 +55,9 @@ services:
       - ${NETWORK_INTERFACE}:8989:8989/tcp
     volumes:
       - /mnt/leftpool/system/multimedia/sonarr:/config
-      - /mnt/leftpool/multimedia/downloads:/downloads
-      - /mnt/leftpool/multimedia/series:/tv
+      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/rightpool/multimedia/series:/tv
+      - /mnt/rightpool/backup/automated/sonarr:/backup
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
@@ -77,8 +79,9 @@ services:
       - ${NETWORK_INTERFACE}:7878:7878/tcp
     volumes:
       - /mnt/leftpool/system/multimedia/radarr:/config
-      - /mnt/leftpool/multimedia/downloads:/downloads
-      - /mnt/leftpool/multimedia/movies:/movies
+      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/rightpool/multimedia/movies:/movies
+      - /mnt/rightpool/backup/automated/radarr:/backup
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
@@ -100,8 +103,9 @@ services:
       - ${NETWORK_INTERFACE}:8686:8686/tcp
     volumes:
       - /mnt/leftpool/system/multimedia/lidarr:/config
-      - /mnt/leftpool/multimedia/downloads:/downloads
-      - /mnt/leftpool/multimedia/music:/music
+      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/rightpool/multimedia/music:/music
+      - /mnt/rightpool/backup/automated/lidarr:/backup
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
@@ -124,8 +128,8 @@ services:
       - ${NETWORK_INTERFACE}:8181:8181/tcp
     volumes:
       - /mnt/leftpool/system/multimedia/sabnzbd:/config
-      - /mnt/leftpool/multimedia/downloads:/downloads
-      - /mnt/leftpool/multimedia/downloads/watch:/watch
+      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/rightpool/multimedia/downloads/watch:/watch
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
@@ -150,8 +154,8 @@ services:
       - ${NETWORK_INTERFACE}:6881:6881/udp
     volumes:
       - /mnt/leftpool/system/multimedia/qbittorrent:/config
-      - /mnt/leftpool/multimedia/downloads:/downloads
-      - /mnt/leftpool/multimedia/downloads/watch:/watch
+      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/rightpool/multimedia/downloads/watch:/watch
     environment:
       - WEBUI_PORT=8282
       - TORRENTING_PORT=6881
@@ -176,6 +180,7 @@ services:
       - ${NETWORK_INTERFACE}:9696:9696/tcp
     volumes:
       - /mnt/leftpool/system/multimedia/prowlarr:/config
+      - /mnt/rightpool/backup/automated/prowlarr:/backup
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
@@ -204,6 +209,27 @@ services:
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
 
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    user: "${APP_USER}:${APP_GROUP}"
+    networks:
+      - default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.ombi.rule=Host(`jellyseerr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.ombi.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:5055:5055/tcp
+    volumes:
+      - /mnt/leftpool/system/multimedia/jellyseerr:/app/config
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - JELLYFIN_TYPE=emby
+
   spotweb:
     image: jgeusebroek/spotweb:latest
     container_name: spotweb
@@ -218,7 +244,7 @@ services:
       - "traefik.http.routers.spotweb.rule=Host(`spotweb.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.spotweb.entrypoints=web"
     ports:
-      - ${NETWORK_INTERFACE}:6767:80/tcp
+      - ${NETWORK_INTERFACE}:6868:80/tcp
     environment:
       - "SPOTWEB_DB_TYPE=pdo_mysql"
       - "SPOTWEB_DB_HOST=mariadb"

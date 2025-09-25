@@ -1,0 +1,36 @@
+version: "3.3"
+
+name: syncthing
+
+networks:
+  default:
+    driver: bridge
+
+services:
+  syncthing:
+    image: "lscr.io/linuxserver/syncthing:latest"
+    container_name: "syncthing"
+    networks:
+      - default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.syncthing.rule=Host(`${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.syncthing.entrypoints=web"
+      - "traefik.http.routers.syncthing.service=syncthing"
+      - "traefik.http.services.syncthing.loadbalancer.server.port=8384"
+    ports:
+      - "${NETWORK_INTERFACE}:8384:8384"
+      - "${NETWORK_INTERFACE}:22000:22000/tcp"
+      - "${NETWORK_INTERFACE}:22000:22000/udp"
+      - "${NETWORK_INTERFACE}:21027:21027/udp"
+    volumes:
+      - /mnt/leftpool/system/processes/syncthing:/config
+      - /mnt/leftpool/backup/syncthing:/backup
+      - /mnt/leftpool/:/data2
+    environment:
+      - "PUID=${APP_USER}"
+      - "PGID=${APP_GROUP}"
+      - "TZ=${APP_TIMEZONE}"
