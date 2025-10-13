@@ -18,7 +18,7 @@ networks:
 
 services:
   traefik:
-    image: "traefik:v3.2"
+    image: "traefik:latest"
     container_name: "traefik"
     networks:
       - default
@@ -27,6 +27,8 @@ services:
       - extras_default
       - monitoring_default
       - nextcloud_default
+    pull_policy: missing
+    restart: unless-stopped
     command:
       #- "--log.level=DEBUG"
       - "--api.insecure=true"
@@ -36,10 +38,13 @@ services:
       - "--entryPoints.web-secure.address=:443"
       - "--entryPoints.zabbix-tcp.address=:10051"
       - "--entryPoints.zabbix-udp.address=:10051/udp"
+      - "--ping=true"
+      - "--ping.entryPoint=ping"
+      - "--entrypoints.ping.address=:8081"
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.traefik.entrypoints=web"
       - "traefik.http.services.traefik-traefik.loadbalancer.server.port=8080"
     ports:
@@ -50,39 +55,27 @@ services:
       - "${NETWORK_INTERFACE}:10051:10051/udp"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/ping"]
+      interval: 25s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   whoami:
     image: "traefik/whoami"
     container_name: "whoami"
+    pull_policy: missing
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.whoami.rule=Host(`whoami.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.whoami.entrypoints=web"
 
-  # step-ca:
-  #   image: smallstep/step-ca:latest
-  #   container_name: step-ca
-  #   networks:
-  #     - default
-  #   restart: unless-stopped
-  #   user: ${APP_USER}:${APP_GROUP}
-  #   labels:
-  #     - "com.centurylinklabs.watchtower.enable=true"
-  #   ports:
-  #     - "${NETWORK_INTERFACE}:9000:9000"
-  #   volumes:
-  #     - /mnt/leftpool/system/processes/step:/home/step
-  #   environment:
-  #     - DOCKER_STEPCA_INIT_NAME=Local CA
-  #     - DOCKER_STEPCA_INIT_DNS=step-ca
-  #     - DOCKER_STEPCA_INIT_REMOTE_MANAGEMENT=true
-  #     - DOCKER_STEPCA_PASSWORD_FILE=/home/step/secrets/password.txt
-  #   command: ["step-ca", "/home/step/config/ca.json"]
-
-  certmate:
-    image: fabriziosalmi/certmate:latest-amd64
-    container_name: certmate
+  step-ca:
+    image: smallstep/step-ca:latest
+    container_name: step-ca
     networks:
       - default
     pull_policy: missing
@@ -91,8 +84,38 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.routers.step-ca.rule=Host(`step-ca.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.step-ca.entrypoints=web"
+    secrets:
+      - step-ca-password
+    ports:
+      - "${NETWORK_INTERFACE}:8999:9000"
+    volumes:
+      - /mnt/leftpool/system/processes/step-ca:/home/step
+    environment:
+      - DOCKER_STEPCA_INIT_NAME=Belle Cerise CA
+      - DOCKER_STEPCA_INIT_DNS=localhost
+      - DOCKER_STEPCA_INIT_REMOTE_MANAGEMENT=false
+      - DOCKER_STEPCA_PASSWORD_FILE=/run/secrets/step-ca-password
+    #ommand: ["step-ca", "/home/step/config/ca.json"]
+
+  certmate:
+    image: supmagc/certmate:latest
+    container_name: certmate
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    user: ${APP_USER}:${APP_GROUP}
+    depends_on:
+      - step-ca
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
       - "traefik.http.routers.certmate.rule=Host(`certmate.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.certmate.entrypoints=web"
+    secrets:
+      - step-ca-password
     ports:
       - "${NETWORK_INTERFACE}:8000:8000"
     environment:
@@ -102,21 +125,41 @@ services:
       FLASK_ENV: "production"
       HOST: "0.0.0.0"
       PORT: "8000"
-      #   FLASK_DEBUG: "false"
-
-      # DNS Provider credentials: example for Cloudflare
-      # CLOUDFLARE_TOKEN: "${CLOUDFLARE_TOKEN}"          # required if using Cloudflare provider
-      # For other providers, uncomment/configure:
-      # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION
-      # AZURE_SUBSCRIPTION_ID, AZURE_CLIENT_ID, etc.
-      # etc. as per the provider you use. :contentReference[oaicite:1]{index=1}
-
+      # CERTMATE_CONFIG: "/app/data/config.yml"
+      # FLASK_DEBUG: "false"
+      # CERTMATE_LOG_LEVEL: debug
     volumes:
       - /mnt/leftpool/system/processes/certmate/certs:/app/certificates:rw
       - /mnt/leftpool/system/processes/certmate/config:/app/data:rw
       - /mnt/leftpool/system/processes/certmate/logs:/app/logs:rw
+      - /mnt/rightpool/backup/automated/certmate:/app/backups:rw
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # lemur:
+  #   image: halianelf/lemur
+  #   container_name: lemur
+  #   networks:
+  #     - default
+  #   pull_policy: missing
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - step-ca
+  #   labels:
+  #     - "com.centurylinklabs.watchtower.enable=true"
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.certmate.rule=Host(`lemur.${NETWORK_DOMAIN}`)"
+  #     - "traefik.http.routers.certmate.entrypoints=web"
+  #   ports:
+  #     - "${NETWORK_INTERFACE}:8998:80"
+  #   environment:
+  #     PGID: ${APP_USER}
+  #     PUID: ${APP_GROUP}
+  #   volumes:
+
+secrets:
+  step-ca-password:
+    file: /mnt/leftpool/system/processes/secrets/step-ca-password.txt

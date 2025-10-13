@@ -130,10 +130,23 @@ services:
       - /mnt/leftpool/system/multimedia/sabnzbd:/config
       - /mnt/rightpool/multimedia/downloads:/downloads
       - /mnt/rightpool/multimedia/downloads/watch:/watch
+      - /mnt/rightpool/backup/automated/sabnzbd:/backup
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+
+  sabnzbd-backup-cleaner:
+    image: alpine
+    container_name: sabnzbd-backup-cleaner
+    user: "${APP_USER}:${APP_GROUP}"
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /mnt/rightpool/backup/automated/sabnzbd:/backup
+    command: sh -c "while true; do find /backup -name 'sabnzbd_backup*' -mtime +7 -delete; sleep 86400; done"
 
   qbittorrent:
     image: linuxserver/qbittorrent:latest

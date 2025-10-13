@@ -20,6 +20,7 @@ services:
       - utilities_default
     pull_policy: missing
     restart: always
+    stop_grace_period: 45s
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
