@@ -30,8 +30,8 @@ services:
     volumes:
       - "/dev/dri:/dev/dri"
       - "/mnt/leftpool/nextcloud:/var/www/html/data:z"
-      - "/mnt/leftpool/system/nextcloud/app/html:/var/www/html:z"
-      - "/mnt/leftpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z"
+      - "/mnt/fastpool/system/nextcloud/app/html:/var/www/html:z"
+      - "/mnt/fastpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z"
     environment:
       - "MYSQL_DATABASE_FILE=/run/secrets/nextcloud-mariadb-database"
       - "MYSQL_HOST_FILE=/run/secrets/nextcloud-mariadb-host"
@@ -55,9 +55,9 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
     volumes:
       - "/mnt/leftpool/nextcloud:/var/www/html/data:z"
-      - "/mnt/leftpool/system/nextcloud/app/html:/var/www/html:z"
-      - "/mnt/leftpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z,ro"
-      - "/mnt/leftpool/system/nextcloud/app/cron.sh:/cron-custom.sh:ro"
+      - "/mnt/fastpool/system/nextcloud/app/html:/var/www/html:z"
+      - "/mnt/fastpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z,ro"
+      - "/mnt/fastpool/system/nextcloud/app/cron.sh:/cron-custom.sh:ro"
     environment:
       - "UID=${APP_USER}"
       - "GID=${APP_GROUP}"
@@ -83,10 +83,10 @@ services:
     ports:
       - "${NETWORK_INTERFACE}:5659:80"
     volumes:
-      - /mnt/leftpool/system/nextcloud/caddy/Caddyfile:/etc/caddy/Caddyfile
-      - /mnt/leftpool/system/nextcloud/caddy/data:/data
-      - /mnt/leftpool/system/nextcloud/caddy/config:/config
-      - /mnt/leftpool/system/nextcloud/app/html:/var/www/html:z,ro
+      - /mnt/fastpool/system/nextcloud/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - /mnt/fastpool/system/nextcloud/caddy/data:/data
+      - /mnt/fastpool/system/nextcloud/caddy/config:/config
+      - /mnt/fastpool/system/nextcloud/app/html:/var/www/html:z,ro
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     healthcheck:
@@ -138,8 +138,8 @@ services:
     ports:
       - '${NETWORK_INTERFACE}:5658:80'
     volumes:
-      - /mnt/leftpool/system/nextcloud/onlyoffice/data:/var/lib/onlyoffice
-      - /mnt/leftpool/system/nextcloud/onlyoffice/log:/var/log/onlyoffice
+      - /mnt/fastpool/system/nextcloud/onlyoffice/data:/var/lib/onlyoffice
+      - /mnt/fastpool/system/nextcloud/onlyoffice/log:/var/log/onlyoffice
     environment:
       - JWT_SECRET=${ONLYOFFICE_JWT_SECRET}
       - ONLYOFFICE_HTTPS_HSTS_ENABLED=false
@@ -162,14 +162,14 @@ services:
 
 secrets:
   nextcloud-mariadb-host:
-    file: /mnt/leftpool/system/processes/secrets/nextcloud-mariadb-host.txt
+    file: /mnt/fastpool/system/processes/secrets/nextcloud-mariadb-host.txt
   nextcloud-mariadb-database:
-    file: /mnt/leftpool/system/processes/secrets/nextcloud-mariadb-database.txt
+    file: /mnt/fastpool/system/processes/secrets/nextcloud-mariadb-database.txt
   nextcloud-mariadb-user:
-    file: /mnt/leftpool/system/processes/secrets/nextcloud-mariadb-user.txt
+    file: /mnt/fastpool/system/processes/secrets/nextcloud-mariadb-user.txt
   nextcloud-mariadb-password:
-    file: /mnt/leftpool/system/processes/secrets/nextcloud-mariadb-password.txt
+    file: /mnt/fastpool/system/processes/secrets/nextcloud-mariadb-password.txt
   nextcloud-admin-user:
-    file: /mnt/leftpool/system/processes/secrets/nextcloud-admin-user.txt
+    file: /mnt/fastpool/system/processes/secrets/nextcloud-admin-user.txt
   nextcloud-admin-password:
-    file: /mnt/leftpool/system/processes/secrets/nextcloud-admin-password.txt
+    file: /mnt/fastpool/system/processes/secrets/nextcloud-admin-password.txt

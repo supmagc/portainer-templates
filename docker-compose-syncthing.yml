@@ -27,7 +27,7 @@ services:
       - "${NETWORK_INTERFACE}:22000:22000/udp"
       - "${NETWORK_INTERFACE}:21027:21027/udp"
     volumes:
-      - /mnt/leftpool/system/processes/syncthing:/config
+      - /mnt/fastpool/system/processes/syncthing:/config
       - /mnt/leftpool/backup/syncthing:/backup
       - /mnt/leftpool/:/data2
     environment:

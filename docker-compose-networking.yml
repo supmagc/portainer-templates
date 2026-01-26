@@ -91,7 +91,7 @@ services:
     ports:
       - "${NETWORK_INTERFACE}:8999:9000"
     volumes:
-      - /mnt/leftpool/system/processes/step-ca:/home/step
+      - /mnt/fastpool/system/processes/step-ca:/home/step
     environment:
       - DOCKER_STEPCA_INIT_NAME=Belle Cerise CA
       - DOCKER_STEPCA_INIT_DNS=localhost
@@ -129,9 +129,9 @@ services:
       # FLASK_DEBUG: "false"
       # CERTMATE_LOG_LEVEL: debug
     volumes:
-      - /mnt/leftpool/system/processes/certmate/certs:/app/certificates:rw
-      - /mnt/leftpool/system/processes/certmate/config:/app/data:rw
-      - /mnt/leftpool/system/processes/certmate/logs:/app/logs:rw
+      - /mnt/fastpool/system/processes/certmate/certs:/app/certificates:rw
+      - /mnt/fastpool/system/processes/certmate/config:/app/data:rw
+      - /mnt/fastpool/system/processes/certmate/logs:/app/logs:rw
       - /mnt/rightpool/backup/automated/certmate:/app/backups:rw
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -162,4 +162,4 @@ services:
 
 secrets:
   step-ca-password:
-    file: /mnt/leftpool/system/processes/secrets/step-ca-password.txt
+    file: /mnt/fastpool/system/processes/secrets/step-ca-password.txt

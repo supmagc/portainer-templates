@@ -25,8 +25,8 @@ services:
       - ${NETWORK_INTERFACE}:8096:8096/tcp
       - ${NETWORK_INTERFACE}:8920:8920/tcp
     volumes:
-      - /mnt/leftpool/system/multimedia/emby/config:/config
-      - /mnt/leftpool/system/multimedia/emby/system:/mnt/system
+      - /mnt/fastpool/system/multimedia/emby/config:/config
+      - /mnt/fastpool/system/multimedia/emby/system:/mnt/system
       - /mnt/rightpool/multimedia/movies:/mnt/movies
       - /mnt/rightpool/multimedia/series:/mnt/series
       - /mnt/rightpool/multimedia/music:/mnt/music
@@ -38,6 +38,18 @@ services:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8096/emby/System/Info/Public" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   sonarr:
     image: linuxserver/sonarr:latest
@@ -54,7 +66,7 @@ services:
     ports:
       - ${NETWORK_INTERFACE}:8989:8989/tcp
     volumes:
-      - /mnt/leftpool/system/multimedia/sonarr:/config
+      - /mnt/fastpool/system/multimedia/sonarr:/config
       - /mnt/rightpool/multimedia/downloads:/downloads
       - /mnt/rightpool/multimedia/series:/tv
       - /mnt/rightpool/backup/automated/sonarr:/backup
@@ -62,6 +74,12 @@ services:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8989" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   radarr:
     image: linuxserver/radarr:latest
@@ -78,7 +96,7 @@ services:
     ports:
       - ${NETWORK_INTERFACE}:7878:7878/tcp
     volumes:
-      - /mnt/leftpool/system/multimedia/radarr:/config
+      - /mnt/fastpool/system/multimedia/radarr:/config
       - /mnt/rightpool/multimedia/downloads:/downloads
       - /mnt/rightpool/multimedia/movies:/movies
       - /mnt/rightpool/backup/automated/radarr:/backup
@@ -86,6 +104,12 @@ services:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   lidarr:
     image: linuxserver/lidarr:latest
@@ -102,7 +126,7 @@ services:
     ports:
       - ${NETWORK_INTERFACE}:8686:8686/tcp
     volumes:
-      - /mnt/leftpool/system/multimedia/lidarr:/config
+      - /mnt/fastpool/system/multimedia/lidarr:/config
       - /mnt/rightpool/multimedia/downloads:/downloads
       - /mnt/rightpool/multimedia/music:/music
       - /mnt/rightpool/backup/automated/lidarr:/backup
@@ -110,6 +134,12 @@ services:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8686" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   sabnzbd:
     image: linuxserver/sabnzbd:latest
@@ -127,7 +157,7 @@ services:
     ports:
       - ${NETWORK_INTERFACE}:8181:8181/tcp
     volumes:
-      - /mnt/leftpool/system/multimedia/sabnzbd:/config
+      - /mnt/fastpool/system/multimedia/sabnzbd:/config
       - /mnt/rightpool/multimedia/downloads:/downloads
       - /mnt/rightpool/multimedia/downloads/watch:/watch
       - /mnt/rightpool/backup/automated/sabnzbd:/backup
@@ -135,6 +165,12 @@ services:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   sabnzbd-backup-cleaner:
     image: alpine
@@ -147,6 +183,12 @@ services:
     volumes:
       - /mnt/rightpool/backup/automated/sabnzbd:/backup
     command: sh -c "while true; do find /backup -name 'sabnzbd_backup*' -mtime +7 -delete; sleep 86400; done"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test $(find /backup -name 'sabnzbd_backup*' | wc -l) -ge 0" ]
+      interval: 5m
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   qbittorrent:
     image: linuxserver/qbittorrent:latest
@@ -166,7 +208,7 @@ services:
       - ${NETWORK_INTERFACE}:6881:6881/tcp
       - ${NETWORK_INTERFACE}:6881:6881/udp
     volumes:
-      - /mnt/leftpool/system/multimedia/qbittorrent:/config
+      - /mnt/fastpool/system/multimedia/qbittorrent:/config
       - /mnt/rightpool/multimedia/downloads:/downloads
       - /mnt/rightpool/multimedia/downloads/watch:/watch
     environment:
@@ -175,6 +217,12 @@ services:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8282" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   prowlarr:
     image: linuxserver/prowlarr:latest
@@ -192,12 +240,18 @@ services:
     ports:
       - ${NETWORK_INTERFACE}:9696:9696/tcp
     volumes:
-      - /mnt/leftpool/system/multimedia/prowlarr:/config
+      - /mnt/fastpool/system/multimedia/prowlarr:/config
       - /mnt/rightpool/backup/automated/prowlarr:/backup
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9696" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   organizr:
     image: organizr/organizr:latest
@@ -216,11 +270,17 @@ services:
     ports:
       - ${NETWORK_INTERFACE}:81:80/tcp
     volumes:
-      - /mnt/leftpool/system/multimedia/organizr:/config
+      - /mnt/fastpool/system/multimedia/organizr:/config
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   jellyseerr:
     image: fallenbagel/jellyseerr:latest
@@ -238,10 +298,16 @@ services:
     ports:
       - ${NETWORK_INTERFACE}:5055:5055/tcp
     volumes:
-      - /mnt/leftpool/system/multimedia/jellyseerr:/app/config
+      - /mnt/fastpool/system/multimedia/jellyseerr:/app/config
     environment:
       - TZ=${APP_TIMEZONE}
       - JELLYFIN_TYPE=emby
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5055" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   spotweb:
     image: jgeusebroek/spotweb:latest
@@ -266,3 +332,9 @@ services:
       - "SPOTWEB_DB_PASS=${SPOTWEB_PASSWORD}"
       - "SPOTWEB_CRON_RETRIEVE=*/15 * * * *"
       - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s

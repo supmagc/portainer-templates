@@ -29,12 +29,13 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /mnt/leftpool/system/extras/stash/config:/root/.stash
+      - /mnt/fastpool/system/extras/stash/config:/root/.stash
       - /mnt/leftpool/extras:/data
-      - /mnt/leftpool/system/extras/stash/metadata:/metadata
-      - /mnt/leftpool/system/extras/stash/cache:/cache
-      - /mnt/leftpool/system/extras/stash/blobs:/blobs
-      - /mnt/leftpool/system/extras/stash/generated:/generated
+      - /mnt/fastpool/system/extras/stash/metadata:/metadata
+      - /mnt/fastpool/system/extras/stash/cache:/cache
+      - /mnt/fastpool/system/extras/stash/blobs:/blobs
+      - /mnt/fastpool/system/extras/stash/generated:/generated
+      - /mnt/rightpool/backup/automated/stash:/backup
     environment:
       - STASH_STASH=/data/
       - STASH_GENERATED=/generated/
@@ -70,7 +71,7 @@ services:
       - TZ=${APP_TIMEZONE}
       - NAMER_CONFIG=/config/namer.cfg
     volumes:
-      - /mnt/leftpool/system/extras/namer:/config
+      - /mnt/fastpool/system/extras/namer:/config
       - /mnt/leftpool/extras:/data
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://namer:6980/api/healthcheck || exit 1" ]
@@ -98,6 +99,7 @@ services:
       - TZ=${APP_TIMEZONE}
       - UMASK=002
     volumes:
-      - /mnt/leftpool/system/extras/whisparr:/config
+      - /mnt/fastpool/system/extras/whisparr:/config
       - /mnt/rightpool/multimedia/downloads:/downloads
       - /mnt/leftpool/extras:/data
+      - /mnt/rightpool/backup/automated/whisparr:/backup

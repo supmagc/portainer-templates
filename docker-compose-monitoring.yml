@@ -35,9 +35,9 @@ services:
       - zabbix-mariadb-password
       - zabbix-mariadb-user
     volumes:
-      - /mnt/leftpool/system/processes/zabbix/server:/var/lib/zabbix
-      - /mnt/leftpool/system/processes/zabbix/snmptraps:/var/lib/zabbix/snmptraps
-      - /mnt/leftpool/system/processes/zabbix/export:/var/lib/zabbix/export
+      - /mnt/fastpool/system/processes/zabbix/server:/var/lib/zabbix
+      - /mnt/fastpool/system/processes/zabbix/snmptraps:/var/lib/zabbix/snmptraps
+      - /mnt/fastpool/system/processes/zabbix/export:/var/lib/zabbix/export
     environment:
       DB_SERVER_HOST: mariadb
       MYSQL_USER_FILE: /run/secrets/zabbix-mariadb-user
@@ -116,7 +116,7 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     volumes:
-      - /mnt/leftpool/system/processes/zabbix/snmptraps:/var/lib/zabbix/snmptraps
+      - /mnt/fastpool/system/processes/zabbix/snmptraps:/var/lib/zabbix/snmptraps
 
   watchtower:
     image: containrrr/watchtower:latest
@@ -138,7 +138,7 @@ services:
 
 secrets:
   zabbix-mariadb-user:
-    file: /mnt/leftpool/system/processes/secrets/zabbix-mariadb-user.txt
+    file: /mnt/fastpool/system/processes/secrets/zabbix-mariadb-user.txt
   zabbix-mariadb-password:
-    file: /mnt/leftpool/system/processes/secrets/zabbix-mariadb-password.txt
+    file: /mnt/fastpool/system/processes/secrets/zabbix-mariadb-password.txt
   
