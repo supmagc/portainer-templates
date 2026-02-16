@@ -87,16 +87,13 @@ services:
       - "traefik.http.routers.step-ca.rule=Host(`step-ca.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.step-ca.entrypoints=web"
     secrets:
-      - step-ca-password
-    ports:
+      - source: step-ca-password
+        target: /home/step/secrets/password
+    ports:      
       - "${NETWORK_INTERFACE}:8999:9000"
     volumes:
       - /mnt/fastpool/system/processes/step-ca:/home/step
     environment:
-      - DOCKER_STEPCA_INIT_NAME=Belle Cerise CA
-      - DOCKER_STEPCA_INIT_DNS=localhost
-      - DOCKER_STEPCA_INIT_REMOTE_MANAGEMENT=false
-      - DOCKER_STEPCA_PASSWORD_FILE=/run/secrets/step-ca-password
     #ommand: ["step-ca", "/home/step/config/ca.json"]
 
   certmate:
