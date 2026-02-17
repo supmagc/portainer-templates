@@ -93,8 +93,11 @@ services:
       - "${NETWORK_INTERFACE}:8999:9000"
     volumes:
       - /mnt/fastpool/system/processes/step-ca:/home/step
-    environment:
-    #ommand: ["step-ca", "/home/step/config/ca.json"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "--cacert", "/home/step/certs/root_ca.crt", "https://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   certmate:
     image: supmagc/certmate:latest
@@ -116,20 +119,18 @@ services:
     ports:
       - "${NETWORK_INTERFACE}:8000:8000"
     environment:
-      # API & security
-      API_BEARER_TOKEN: "${CERTMATE_API_TOKEN}"         # set this in your .env
-      SECRET_KEY: "${CERTMATE_SECRET_KEY}"           # Flask secret key
+      # Crucial for Step-CA: Lego (the backend) needs this to trust your root
+      LEGO_CA_CERTIFICATES: /etc/ssl/certs/root_ca.crt
+      SECRET_KEY: "${CERTMATE_SECRET_KEY}"
       FLASK_ENV: "production"
       HOST: "0.0.0.0"
       PORT: "8000"
-      # CERTMATE_CONFIG: "/app/data/config.yml"
-      # FLASK_DEBUG: "false"
-      # CERTMATE_LOG_LEVEL: debug
     volumes:
       - /mnt/fastpool/system/processes/certmate/certs:/app/certificates:rw
       - /mnt/fastpool/system/processes/certmate/config:/app/data:rw
       - /mnt/fastpool/system/processes/certmate/logs:/app/logs:rw
       - /mnt/rightpool/backup/automated/certmate:/app/backups:rw
+      - /mnt/fastpool/system/processes/step-ca/certs/root_ca.crt:/etc/ssl/certs/root_ca.crt:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
