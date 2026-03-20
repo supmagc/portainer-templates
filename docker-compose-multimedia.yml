@@ -15,7 +15,7 @@ services:
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -57,7 +57,7 @@ services:
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -87,7 +87,7 @@ services:
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -117,7 +117,7 @@ services:
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -147,7 +147,7 @@ services:
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -196,7 +196,7 @@ services:
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -231,7 +231,7 @@ services:
       - default
       - utilities_default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -253,13 +253,42 @@ services:
       retries: 6
       start_period: 30s
 
+  bazarr:
+    image: linuxserver/bazarr:latest
+    container_name: bazarr
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.bazarr.rule=Host(`bazarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.bazarr.entrypoints=web"
+    ports:
+      - 6767:6767
+    environment:
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+    volumes:
+      - /mnt/fastpool/system/multimedia/bazarr:/config
+      - /mnt/rightpool/multimedia/movies:/movies
+      - /mnt/rightpool/multimedia/series:/tv
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6767" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
   organizr:
     image: organizr/organizr:latest
     container_name: organizr
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -282,28 +311,28 @@ services:
       retries: 6
       start_period: 30s
 
-  jellyseerr:
-    image: fallenbagel/jellyseerr:latest
-    container_name: jellyseerr
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
     user: "${APP_USER}:${APP_GROUP}"
     networks:
       - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
-      - "traefik.http.routers.ombi.rule=Host(`jellyseerr.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.ombi.entrypoints=web"
+      - "traefik.http.routers.seerr.rule=Host(`seerr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.seerr.entrypoints=web"
     ports:
       - ${NETWORK_INTERFACE}:5055:5055/tcp
     volumes:
-      - /mnt/fastpool/system/multimedia/jellyseerr:/app/config
+      - /mnt/fastpool/system/multimedia/seerr:/app/config
     environment:
       - TZ=${APP_TIMEZONE}
       - JELLYFIN_TYPE=emby
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5055" ]
+      test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/status || exit 1
       interval: 1m30s
       timeout: 10s
       retries: 6
@@ -316,7 +345,7 @@ services:
       - default
       - utilities_default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
