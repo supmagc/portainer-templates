@@ -275,6 +275,7 @@ services:
       - /mnt/fastpool/system/multimedia/bazarr:/config
       - /mnt/rightpool/multimedia/movies:/movies
       - /mnt/rightpool/multimedia/series:/tv
+      - /mnt/rightpool/backup/automated/bazarr:/backup
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6767" ]
       interval: 1m30s
