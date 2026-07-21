@@ -5,7 +5,7 @@ name: extras
 networks:
   default:
     driver: bridge
-  multimedia_default:
+  downloads_default:
     external: true
   utilities_default:
     external: true
@@ -83,7 +83,7 @@ services:
     container_name: whisparr
     networks:
       - default
-      - multimedia_default
+      - downloads_default
     pull_policy: missing
     restart: always
     labels:
@@ -100,6 +100,6 @@ services:
       - UMASK=002
     volumes:
       - /mnt/fastpool/system/extras/whisparr:/config
-      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/rightpool/downloads:/downloads
       - /mnt/leftpool/extras:/data
       - /mnt/rightpool/backup/automated/whisparr:/backup

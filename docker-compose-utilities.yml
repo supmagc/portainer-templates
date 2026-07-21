@@ -183,6 +183,36 @@ services:
       - /mnt/fastpool/system/processes/dupeguru:/config:rw
       - /mnt/fastpool/system/processes/nextcloud:/storage:rw
 
+  fileflows:
+    image: revenz/fileflows:latest
+    container_name: fileflows
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.fileflows.rule=Host(`fileflows.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.fileflows.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:9920:5000/tcp
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - PUID=${APP_USER}
+      - PGID=${APP_GROUP}
+      - BROWSER_START_DIR=/media
+      - TempPathHost=/mnt/fastpool/system/processes/fileflows/temp
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/fastpool/system/processes/fileflows/temp:/temp
+      - /mnt/fastpool/system/processes/fileflows/data:/app/Data
+      - /mnt/fastpool/system/processes/fileflows/logs:/app/Logs
+      - /mnt/fastpool/system/processes/fileflows/common:/app/common
+      - /mnt/leftpool/extras:/media/extras
+      - /mnt/rightpool/movies:/media/movies
+      - /mnt/rightpool/series:/media/series
+
 secrets:
   mariadb-backup-pass:
     file: /mnt/fastpool/system/processes/secrets/mariadb-backup-pass.txt

@@ -7,6 +7,8 @@ networks:
     driver: bridge
   multimedia_default:
     external: true
+  downloads_default:
+    external: true
   utilities_default:
     external: true
   extras_default:
@@ -23,6 +25,7 @@ services:
     networks:
       - default
       - multimedia_default
+      - downloads_default
       - utilities_default
       - extras_default
       - monitoring_default
@@ -99,43 +102,71 @@ services:
       timeout: 10s
       retries: 3
 
-  certmate:
-    image: supmagc/certmate:latest
-    container_name: certmate
-    networks:
-      - default
-    pull_policy: missing
-    restart: unless-stopped
-    user: ${APP_USER}:${APP_GROUP}
-    depends_on:
-      - step-ca
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
-      - "traefik.http.routers.certmate.rule=Host(`certmate.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.certmate.entrypoints=web"
-    secrets:
-      - step-ca-password
-    ports:
-      - "${NETWORK_INTERFACE}:8000:8000"
-    environment:
-      # Crucial for Step-CA: Lego (the backend) needs this to trust your root
-      LEGO_CA_CERTIFICATES: /etc/ssl/certs/root_ca.crt
-      SECRET_KEY: "${CERTMATE_SECRET_KEY}"
-      FLASK_ENV: "production"
-      HOST: "0.0.0.0"
-      PORT: "8000"
-    volumes:
-      - /mnt/fastpool/system/processes/certmate/certs:/app/certificates:rw
-      - /mnt/fastpool/system/processes/certmate/config:/app/data:rw
-      - /mnt/fastpool/system/processes/certmate/logs:/app/logs:rw
-      - /mnt/rightpool/backup/automated/certmate:/app/backups:rw
-      - /mnt/fastpool/system/processes/step-ca/certs/root_ca.crt:/etc/ssl/certs/root_ca.crt:ro
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # certmate:
+  #   image: supmagc/certmate:latest
+  #   container_name: certmate
+  #   networks:
+  #     - default
+  #   pull_policy: missing
+  #   restart: unless-stopped
+  #   user: ${APP_USER}:${APP_GROUP}
+  #   depends_on:
+  #     - step-ca
+  #   labels:
+  #     - "com.centurylinklabs.watchtower.enable=true"
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.certmate.rule=Host(`certmate.${NETWORK_DOMAIN}`)"
+  #     - "traefik.http.routers.certmate.entrypoints=web"
+  #   secrets:
+  #     - step-ca-password
+  #   ports:
+  #     - "${NETWORK_INTERFACE}:8000:8000"
+  #   environment:
+  #     LEGO_CA_CERTIFICATES: /etc/ssl/certs/root_ca.crt
+  #     SECRET_KEY: "${CERTMATE_SECRET_KEY}"
+  #     FLASK_ENV: "production"
+  #     HOST: "0.0.0.0"
+  #     PORT: "8000"
+  #   volumes:
+  #     - /mnt/fastpool/system/processes/certmate/certs:/app/certificates:rw
+  #     - /mnt/fastpool/system/processes/certmate/letsencrypt:/app/letsencrypt:rw
+  #     - /mnt/fastpool/system/processes/certmate/config:/app/data:rw
+  #     - /mnt/fastpool/system/processes/certmate/logs:/app/logs:rw
+  #     - /mnt/rightpool/backup/automated/certmate:/app/backups:rw
+  #     - /mnt/fastpool/system/processes/step-ca/certs/root_ca.crt:/etc/ssl/certs/root_ca.crt:ro
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # acme-dns:
+  #   image: joohoi/acme-dns:latest
+  #   container_name: acme-dns
+  #   networks:
+  #     - default
+  #   pull_policy: missing
+  #   restart: unless-stopped
+  #   user: ${APP_USER}:${APP_GROUP}
+  #   labels:
+  #     - "com.centurylinklabs.watchtower.enable=true"
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.acme-dns.rule=Host(`acme-dns.${NETWORK_DOMAIN}`)"
+  #     - "traefik.http.routers.acme-dns.entrypoints=web"
+  #     - "traefik.http.services.acme-dns.loadbalancer.server.port=80"
+  #   ports:
+  #     - "${NETWORK_INTERFACE}:5354:53/tcp"
+  #     - "${NETWORK_INTERFACE}:5354:53/udp"
+  #     - "${NETWORK_INTERFACE}:5050:80"
+  #   volumes:
+  #     - /mnt/fastpool/system/processes/acme-dns/data:/var/lib/acme-dns:rw
+  #     - /mnt/fastpool/system/processes/acme-dns/config:/etc/acme-dns:rw
+  #   healthcheck:
+  #     test: ["CMD", "nc", "-z", "127.0.0.1", "80"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+
 
   # lemur:
   #   image: halianelf/lemur

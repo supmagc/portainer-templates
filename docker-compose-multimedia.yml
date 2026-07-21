@@ -7,6 +7,8 @@ networks:
     driver: bridge
   utilities_default:
     external: true
+  downloads_default:
+    external: true
 
 services:
   emby:
@@ -56,6 +58,7 @@ services:
     container_name: sonarr
     networks:
       - default
+      - downloads_default
     pull_policy: missing
     restart: unless-stopped
     labels:
@@ -67,7 +70,7 @@ services:
       - ${NETWORK_INTERFACE}:8989:8989/tcp
     volumes:
       - /mnt/fastpool/system/multimedia/sonarr:/config
-      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/rightpool/downloads:/downloads
       - /mnt/rightpool/multimedia/series:/tv
       - /mnt/rightpool/backup/automated/sonarr:/backup
     environment:
@@ -86,6 +89,7 @@ services:
     container_name: radarr
     networks:
       - default
+      - downloads_default
     pull_policy: missing
     restart: unless-stopped
     labels:
@@ -97,7 +101,7 @@ services:
       - ${NETWORK_INTERFACE}:7878:7878/tcp
     volumes:
       - /mnt/fastpool/system/multimedia/radarr:/config
-      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/rightpool/downloads:/downloads
       - /mnt/rightpool/multimedia/movies:/movies
       - /mnt/rightpool/backup/automated/radarr:/backup
     environment:
@@ -116,6 +120,7 @@ services:
     container_name: lidarr
     networks:
       - default
+      - downloads_default
     pull_policy: missing
     restart: unless-stopped
     labels:
@@ -127,7 +132,7 @@ services:
       - ${NETWORK_INTERFACE}:8686:8686/tcp
     volumes:
       - /mnt/fastpool/system/multimedia/lidarr:/config
-      - /mnt/rightpool/multimedia/downloads:/downloads
+      - /mnt/rightpool/downloads:/downloads
       - /mnt/rightpool/multimedia/music:/music
       - /mnt/rightpool/backup/automated/lidarr:/backup
     environment:
@@ -136,118 +141,6 @@ services:
       - TZ=${APP_TIMEZONE}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8686" ]
-      interval: 1m30s
-      timeout: 10s
-      retries: 6
-      start_period: 30s
-
-  sabnzbd:
-    image: linuxserver/sabnzbd:latest
-    container_name: sabnzbd
-    networks:
-      - default
-    pull_policy: missing
-    restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
-      - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.sabnzbd.entrypoints=web"
-      - "traefik.http.services.sabnzbd-multimedia.loadbalancer.server.port=8181"
-    ports:
-      - ${NETWORK_INTERFACE}:8181:8181/tcp
-    volumes:
-      - /mnt/fastpool/system/multimedia/sabnzbd:/config
-      - /mnt/rightpool/multimedia/downloads:/downloads
-      - /mnt/rightpool/multimedia/downloads/watch:/watch
-      - /mnt/rightpool/backup/automated/sabnzbd:/backup
-    environment:
-      - PGID=${APP_USER}
-      - PUID=${APP_GROUP}
-      - TZ=${APP_TIMEZONE}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8181" ]
-      interval: 1m30s
-      timeout: 10s
-      retries: 6
-      start_period: 30s
-
-  sabnzbd-backup-cleaner:
-    image: alpine
-    container_name: sabnzbd-backup-cleaner
-    user: "${APP_USER}:${APP_GROUP}"
-    pull_policy: missing
-    restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    volumes:
-      - /mnt/rightpool/backup/automated/sabnzbd:/backup
-    command: sh -c "while true; do find /backup -name 'sabnzbd_backup*' -mtime +7 -delete; sleep 86400; done"
-    healthcheck:
-      test: ["CMD", "sh", "-c", "test $(find /backup -name 'sabnzbd_backup*' | wc -l) -ge 0" ]
-      interval: 5m
-      timeout: 10s
-      retries: 6
-      start_period: 30s
-
-  qbittorrent:
-    image: linuxserver/qbittorrent:latest
-    container_name: qbittorrent
-    networks:
-      - default
-    pull_policy: missing
-    restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
-      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.qbittorrent.entrypoints=web"
-      - "traefik.http.services.qbittorrent-multimedia.loadbalancer.server.port=8282"
-    ports:
-      - ${NETWORK_INTERFACE}:8282:8282/tcp
-      - ${NETWORK_INTERFACE}:6881:6881/tcp
-      - ${NETWORK_INTERFACE}:6881:6881/udp
-    volumes:
-      - /mnt/fastpool/system/multimedia/qbittorrent:/config
-      - /mnt/rightpool/multimedia/downloads:/downloads
-      - /mnt/rightpool/multimedia/downloads/watch:/watch
-    environment:
-      - WEBUI_PORT=8282
-      - TORRENTING_PORT=6881
-      - PGID=${APP_USER}
-      - PUID=${APP_GROUP}
-      - TZ=${APP_TIMEZONE}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8282" ]
-      interval: 1m30s
-      timeout: 10s
-      retries: 6
-      start_period: 30s
-
-  prowlarr:
-    image: linuxserver/prowlarr:latest
-    container_name: prowlarr
-    networks:
-      - default
-      - utilities_default
-    pull_policy: missing
-    restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
-      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.prowlarr.entrypoints=web"
-    ports:
-      - ${NETWORK_INTERFACE}:9696:9696/tcp
-    volumes:
-      - /mnt/fastpool/system/multimedia/prowlarr:/config
-      - /mnt/rightpool/backup/automated/prowlarr:/backup
-    environment:
-      - PGID=${APP_USER}
-      - PUID=${APP_GROUP}
-      - TZ=${APP_TIMEZONE}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9696" ]
       interval: 1m30s
       timeout: 10s
       retries: 6
@@ -334,36 +227,6 @@ services:
       - JELLYFIN_TYPE=emby
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/status || exit 1
-      interval: 1m30s
-      timeout: 10s
-      retries: 6
-      start_period: 30s
-
-  spotweb:
-    image: jgeusebroek/spotweb:latest
-    container_name: spotweb
-    networks:
-      - default
-      - utilities_default
-    pull_policy: missing
-    restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
-      - "traefik.http.routers.spotweb.rule=Host(`spotweb.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.spotweb.entrypoints=web"
-    ports:
-      - ${NETWORK_INTERFACE}:6868:80/tcp
-    environment:
-      - "SPOTWEB_DB_TYPE=pdo_mysql"
-      - "SPOTWEB_DB_HOST=mariadb"
-      - "SPOTWEB_DB_NAME=spotweb"
-      - "SPOTWEB_DB_USER=spotweb"
-      - "SPOTWEB_DB_PASS=${SPOTWEB_PASSWORD}"
-      - "SPOTWEB_CRON_RETRIEVE=*/15 * * * *"
-      - TZ=${APP_TIMEZONE}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost" ]
       interval: 1m30s
       timeout: 10s
       retries: 6

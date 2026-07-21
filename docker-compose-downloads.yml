@@ -1,0 +1,152 @@
+version: "3.3"
+
+name: downloads
+
+networks:
+  default:
+    driver: bridge
+  utilities_default:
+    external: true
+
+services:
+  sabnzbd:
+    image: linuxserver/sabnzbd:latest
+    container_name: sabnzbd
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.sabnzbd.entrypoints=web"
+      - "traefik.http.services.sabnzbd-multimedia.loadbalancer.server.port=8181"
+    ports:
+      - ${NETWORK_INTERFACE}:8181:8181/tcp
+    volumes:
+      - /mnt/fastpool/system/downloads/sabnzbd:/config
+      - /mnt/rightpool/downloads:/downloads
+      - /mnt/rightpool/downloads/watch:/watch
+      - /mnt/rightpool/backup/automated/sabnzbd:/backup
+    environment:
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  sabnzbd-backup-cleaner:
+    image: alpine
+    container_name: sabnzbd-backup-cleaner
+    user: "${APP_USER}:${APP_GROUP}"
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /mnt/rightpool/backup/automated/sabnzbd:/backup
+    command: sh -c "while true; do find /backup -name 'sabnzbd_backup*' -mtime +7 -delete; sleep 86400; done"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test $(find /backup -name 'sabnzbd_backup*' | wc -l) -ge 0" ]
+      interval: 5m
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  qbittorrent:
+    image: linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.qbittorrent.entrypoints=web"
+      - "traefik.http.services.qbittorrent-multimedia.loadbalancer.server.port=8282"
+    ports:
+      - ${NETWORK_INTERFACE}:8282:8282/tcp
+      - ${NETWORK_INTERFACE}:6881:6881/tcp
+      - ${NETWORK_INTERFACE}:6881:6881/udp
+    volumes:
+      - /mnt/fastpool/system/downloads/qbittorrent:/config
+      - /mnt/rightpool/downloads:/downloads
+      - /mnt/rightpool/downloads/watch:/watch
+    environment:
+      - WEBUI_PORT=8282
+      - TORRENTING_PORT=6881
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8282" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  prowlarr:
+    image: linuxserver/prowlarr:latest
+    container_name: prowlarr
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.prowlarr.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:9696:9696/tcp
+    volumes:
+      - /mnt/fastpool/system/downloads/prowlarr:/config
+      - /mnt/rightpool/backup/automated/prowlarr:/backup
+    environment:
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9696" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  spotweb:
+    image: jgeusebroek/spotweb:latest
+    container_name: spotweb
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.spotweb.rule=Host(`spotweb.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.spotweb.entrypoints=web"
+    ports:
+      - ${NETWORK_INTERFACE}:6868:80/tcp
+    environment:
+      - "SPOTWEB_DB_TYPE=pdo_mysql"
+      - "SPOTWEB_DB_HOST=mariadb"
+      - "SPOTWEB_DB_NAME=spotweb"
+      - "SPOTWEB_DB_USER=spotweb"
+      - "SPOTWEB_DB_PASS=${SPOTWEB_PASSWORD}"
+      - "SPOTWEB_CRON_RETRIEVE=*/15 * * * *"
+      - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
