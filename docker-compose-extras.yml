@@ -12,7 +12,7 @@ networks:
 
 services:
   stash:
-    image: supmagc/stapp:latest
+    image: stashapp/stash:latest
     container_name: stash
     networks:
       - default
@@ -44,6 +44,8 @@ services:
       - STASH_PORT=9999
       - USER=${APP_USER}
       - GROUP=${APP_GROUP}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["apk add --no-cache py3-watchdog && exec stash"]
     logging:
       driver: "json-file"
       options:
@@ -79,7 +81,7 @@ services:
       timeout: 30s
 
   whisparr:
-    image: ghcr.io/hotio/whisparr
+    image: ghcr.io/hotio/whisparr:v2-develop
     container_name: whisparr
     networks:
       - default
