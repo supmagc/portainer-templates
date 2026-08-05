@@ -182,33 +182,46 @@ services:
     volumes:
       - /mnt/fastpool/system/processes/dupeguru:/config:rw
       - /mnt/fastpool/system/processes/nextcloud:/storage:rw
-
-  fileflows:
-    image: revenz/fileflows:latest
-    container_name: fileflows
+  tdarr:
+    image: ghcr.io/haveagitgat/tdarr:latest
+    container_name: tdarr
     networks:
       - default
     pull_policy: missing
     restart: unless-stopped
+    group_add:
+      - "910"   # nas_multimedia
+      - "930"   # nas_extras
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
-      - "traefik.http.routers.fileflows.rule=Host(`fileflows.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.fileflows.entrypoints=web"
+      - "traefik.http.routers.tdarr.rule=Host(`tdarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.tdarr.entrypoints=web"
+      - "traefik.http.services.tdarr.loadbalancer.server.port=8265"
     ports:
-      - ${NETWORK_INTERFACE}:9920:5000/tcp
+      - ${NETWORK_INTERFACE}:9921:8265/tcp   # webUI
+      - ${NETWORK_INTERFACE}:9922:8266/tcp   # server (needed if you add external nodes later)
     environment:
       - TZ=${APP_TIMEZONE}
-      - PUID=${APP_USER}
-      - PGID=${APP_GROUP}
-      - BROWSER_START_DIR=/media
-      - TempPathHost=/mnt/fastpool/system/processes/fileflows/temp
+      - PUID=${APP_USER_FILEFLOWS}
+      - PGID=${APP_GROUP_FILEFLOWS}
+      - UMASK_SET=002
+      - serverIP=0.0.0.0
+      - serverPort=8266
+      - webUIPort=8265
+      - internalNode=true
+      - inContainer=true
+      - ffmpegVersion=7
+      - nodeName=MainNode
+      - auth=false
+      - openBrowser=false
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /mnt/fastpool/system/processes/fileflows/temp:/temp
-      - /mnt/fastpool/system/processes/fileflows/data:/app/Data
-      - /mnt/fastpool/system/processes/fileflows/logs:/app/Logs
-      - /mnt/fastpool/system/processes/fileflows/common:/app/common
+      - /mnt/fastpool/system/processes/tdarr/custom-cont-init.d:/custom-cont-init.d
+      - /mnt/fastpool/system/processes/tdarr/server:/app/server
+      - /mnt/fastpool/system/processes/tdarr/configs:/app/configs
+      - /mnt/fastpool/system/processes/tdarr/logs:/app/logs
+      - /mnt/fastpool/system/processes/tdarr/temp:/temp
+      - /mnt/fastpool/cache/tdarr:/cache
       - /mnt/leftpool/extras:/media/extras
       - /mnt/rightpool/movies:/media/movies
       - /mnt/rightpool/series:/media/series
