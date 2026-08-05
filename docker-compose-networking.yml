@@ -44,11 +44,22 @@ services:
       - "--ping=true"
       - "--ping.entryPoint=ping"
       - "--entrypoints.ping.address=:8081"
+      - "--certificatesresolvers.stepca.acme.caserver=https://step-ca.networking.bellecerise.local:8999/acme/acme/directory"
+      - "--certificatesresolvers.stepca.acme.storage=/stepca/acme.json"
+      - "--certificatesresolvers.stepca.acme.httpchallenge=true"
+      - "--certificatesresolvers.stepca.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.stepca.acme.email=admin@bellecerise.be"
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.traefik-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.traefik.rule=Host(`traefik.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.traefik.entrypoints=web"
+      - "traefik.http.routers.traefik.middlewares=traefik-https-redirect"
+      - "traefik.http.routers.traefik-secure.rule=Host(`traefik.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.traefik-secure.entrypoints=web-secure"
+      - "traefik.http.routers.traefik-secure.tls=true"
+      - "traefik.http.routers.traefik-secure.tls.certresolver=stepca"  
       - "traefik.http.services.traefik-traefik.loadbalancer.server.port=8080"
     ports:
       - "${NETWORK_INTERFACE}:80:80"
@@ -58,6 +69,10 @@ services:
       - "${NETWORK_INTERFACE}:10051:10051/udp"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "/mnt/fastpool/system/processes/traefik/stepca:/stepca"
+      - "/mnt/fastpool/system/cert/root_ca.crt:/certs/root_ca.crt:ro"
+    environment:
+      - LEGO_CA_CERTIFICATES=/certs/root_ca.crt
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/ping"]
       interval: 25s
@@ -71,10 +86,14 @@ services:
     pull_policy: missing
     restart: unless-stopped
     labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
+      - "traefik.http.middlewares.whoami-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.whoami.rule=Host(`whoami.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.whoami.entrypoints=web"
+      - "traefik.http.routers.whoami.middlewares=whoami-https-redirect"
+      - "traefik.http.routers.whoami-secure.rule=Host(`whoami.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.whoami-secure.entrypoints=web-secure"
+      - "traefik.http.routers.whoami-secure.tls=true"
+      - "traefik.http.routers.whoami-secure.tls.certresolver=stepca"  
 
   step-ca:
     image: smallstep/step-ca:latest
@@ -88,7 +107,9 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.routers.step-ca.rule=Host(`step-ca.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.step-ca.entrypoints=web"
+      - "traefik.http.routers.step-ca.entrypoints=web,web-secure"
+      - "traefik.http.routers.step-ca.tls=true"
+      - "traefik.http.routers.step-ca.tls.certresolver=stepca"
     secrets:
       - source: step-ca-password
         target: /home/step/secrets/password
@@ -101,93 +122,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # certmate:
-  #   image: supmagc/certmate:latest
-  #   container_name: certmate
-  #   networks:
-  #     - default
-  #   pull_policy: missing
-  #   restart: unless-stopped
-  #   user: ${APP_USER}:${APP_GROUP}
-  #   depends_on:
-  #     - step-ca
-  #   labels:
-  #     - "com.centurylinklabs.watchtower.enable=true"
-  #     - "traefik.enable=true"
-  #     - "traefik.http.routers.certmate.rule=Host(`certmate.${NETWORK_DOMAIN}`)"
-  #     - "traefik.http.routers.certmate.entrypoints=web"
-  #   secrets:
-  #     - step-ca-password
-  #   ports:
-  #     - "${NETWORK_INTERFACE}:8000:8000"
-  #   environment:
-  #     LEGO_CA_CERTIFICATES: /etc/ssl/certs/root_ca.crt
-  #     SECRET_KEY: "${CERTMATE_SECRET_KEY}"
-  #     FLASK_ENV: "production"
-  #     HOST: "0.0.0.0"
-  #     PORT: "8000"
-  #   volumes:
-  #     - /mnt/fastpool/system/processes/certmate/certs:/app/certificates:rw
-  #     - /mnt/fastpool/system/processes/certmate/letsencrypt:/app/letsencrypt:rw
-  #     - /mnt/fastpool/system/processes/certmate/config:/app/data:rw
-  #     - /mnt/fastpool/system/processes/certmate/logs:/app/logs:rw
-  #     - /mnt/rightpool/backup/automated/certmate:/app/backups:rw
-  #     - /mnt/fastpool/system/processes/step-ca/certs/root_ca.crt:/etc/ssl/certs/root_ca.crt:ro
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-
-  # acme-dns:
-  #   image: joohoi/acme-dns:latest
-  #   container_name: acme-dns
-  #   networks:
-  #     - default
-  #   pull_policy: missing
-  #   restart: unless-stopped
-  #   user: ${APP_USER}:${APP_GROUP}
-  #   labels:
-  #     - "com.centurylinklabs.watchtower.enable=true"
-  #     - "traefik.enable=true"
-  #     - "traefik.http.routers.acme-dns.rule=Host(`acme-dns.${NETWORK_DOMAIN}`)"
-  #     - "traefik.http.routers.acme-dns.entrypoints=web"
-  #     - "traefik.http.services.acme-dns.loadbalancer.server.port=80"
-  #   ports:
-  #     - "${NETWORK_INTERFACE}:5354:53/tcp"
-  #     - "${NETWORK_INTERFACE}:5354:53/udp"
-  #     - "${NETWORK_INTERFACE}:5050:80"
-  #   volumes:
-  #     - /mnt/fastpool/system/processes/acme-dns/data:/var/lib/acme-dns:rw
-  #     - /mnt/fastpool/system/processes/acme-dns/config:/etc/acme-dns:rw
-  #   healthcheck:
-  #     test: ["CMD", "nc", "-z", "127.0.0.1", "80"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-
-
-  # lemur:
-  #   image: halianelf/lemur
-  #   container_name: lemur
-  #   networks:
-  #     - default
-  #   pull_policy: missing
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - step-ca
-  #   labels:
-  #     - "com.centurylinklabs.watchtower.enable=true"
-  #     - "traefik.enable=true"
-  #     - "traefik.http.routers.certmate.rule=Host(`lemur.${NETWORK_DOMAIN}`)"
-  #     - "traefik.http.routers.certmate.entrypoints=web"
-  #   ports:
-  #     - "${NETWORK_INTERFACE}:8998:80"
-  #   environment:
-  #     PGID: ${APP_USER}
-  #     PUID: ${APP_GROUP}
-  #   volumes:
 
 secrets:
   step-ca-password:
