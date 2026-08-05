@@ -136,8 +136,14 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.nextcloud-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.nextcloud-web.rule=Host(`${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.nextcloud-web.entrypoints=web"
+      - "traefik.http.routers.nextcloud-web.middlewares=nextcloud-https-redirect"
+      - "traefik.http.routers.nextcloud-web-secure.rule=Host(`${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.nextcloud-web-secure.entrypoints=web-secure"
+      - "traefik.http.routers.nextcloud-web-secure.tls=true"
+      - "traefik.http.routers.nextcloud-web-secure.tls.certresolver=stepca"
     depends_on:
       nextcloud:
         condition: service_healthy
@@ -203,7 +209,7 @@ services:
       - CHECK_INTERVAL=21600
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - .:/stack
+      - /mnt/fastpool/system/processes/portainer/compose:/portainer-compose:ro
     working_dir: /stack
     entrypoint: sh
     command:
@@ -214,8 +220,22 @@ services:
 
         BASE_IMAGE=nextcloud:fpm-alpine
         IMAGE_TAG=nextcloud-local:fpm-alpine
-        STATE_FILE=/stack/.nextcloud-base-digest
-        COMPOSE="docker compose"
+        STATE_FILE=/tmp/.nextcloud-base-digest
+
+        # --- Locate this stack's compose file at runtime ---
+        STACK_FILE=$$(grep -l "container_name: nextcloud-rebuilder" /portainer-compose/*/docker-compose.yml 2>/dev/null | head -n1)
+        if [ -z "$$STACK_FILE" ]; then
+          echo "$(date -Iseconds) ERROR: could not locate this stack's docker-compose.yml under /portainer-compose"
+          exit 1
+        fi
+        STACK_DIR=$$(dirname "$$STACK_FILE")
+        echo "$(date -Iseconds) resolved stack directory: $$STACK_DIR"
+
+        ENV_ARGS=""
+        if [ -f "$$STACK_DIR/stack.env" ]; then
+          ENV_ARGS="--env-file $$STACK_DIR/stack.env"
+        fi
+        COMPOSE="docker compose -f $$STACK_FILE $$ENV_ARGS"
 
         printf '%s' 'FROM nextcloud:fpm-alpine
         RUN set -ex; \
