@@ -1,3 +1,33 @@
+# ---------------------------------------------------------------------------
+# Recreating this stack from scratch
+# ---------------------------------------------------------------------------
+#
+# 1. First deploy is a TWO-STEP process, because Compose resolves every
+#    active service's image up front (regardless of depends_on ordering) —
+#    so nextcloud/cron/web must not be "active" yet the very first time,
+#    or Compose fails immediately with "No such image: nextcloud-local:...".
+#      a) Deploy/update the stack in Portainer WITHOUT any COMPOSE_PROFILES
+#         env var set (or leave it unset/empty). Only `rebuilder` (and
+#         `onlyoffice`, which is unrelated) will start — nextcloud/cron/web
+#         are gated behind the "app" profile and Compose skips them
+#         entirely, so there's nothing to fail on.
+#      b) Watch `docker logs -f nextcloud-rebuilder` until it reports the
+#         image built successfully (a few minutes — it builds with its own
+#         docker CLI + buildx over the mounted docker.sock, never through
+#         Portainer's bundled compose engine, so this also sidesteps
+#         environments where that engine lacks the buildx plugin).
+#      c) Add an environment variable `COMPOSE_PROFILES=app` to this stack
+#         in Portainer and deploy/update again. The image now exists, so
+#         nextcloud/cron/web start normally. Leave COMPOSE_PROFILES=app set
+#         permanently after this — all future redeploys are single-step.
+#
+# 2. Only needed on a truly fresh instance (new config.php, not restored from
+#    prior storage) — these two are otherwise already set and persisted at
+#    /mnt/fastpool/system/nextcloud/app/html:
+#      docker exec -u www-data nextcloud php occ config:system:set preview_imaginary_url --value=""
+#      docker exec -u www-data nextcloud php occ config:system:set memcache.local --value="\OC\Memcache\APCu"
+# ---------------------------------------------------------------------------
+
 version: "3.3"
 
 name: nextcloud
@@ -10,16 +40,21 @@ networks:
 
 services:
   nextcloud:
-    image: "supmagc/nextcloud:latest"
+    image: "nextcloud-local:fpm-alpine"
     container_name: "nextcloud"
     user: "${APP_USER}:${APP_GROUP}"
+    profiles:
+      - app
     networks:
       - default
       - utilities_default
-    pull_policy: missing
+    pull_policy: never
     restart: always
+    depends_on:
+      rebuilder:
+        condition: service_healthy
     labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.enable=false"
     secrets:
       - nextcloud-mariadb-host
       - nextcloud-mariadb-database
@@ -32,6 +67,7 @@ services:
       - "/mnt/leftpool/nextcloud:/var/www/html/data:z"
       - "/mnt/fastpool/system/nextcloud/app/html:/var/www/html:z"
       - "/mnt/fastpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z"
+      - "/mnt/fastpool/system/nextcloud/app/apcu.ini:/usr/local/etc/php/conf.d/zz-apcu.ini:z,ro"
     environment:
       - "MYSQL_DATABASE_FILE=/run/secrets/nextcloud-mariadb-database"
       - "MYSQL_HOST_FILE=/run/secrets/nextcloud-mariadb-host"
@@ -39,24 +75,40 @@ services:
       - "MYSQL_PASSWORD_FILE=/run/secrets/nextcloud-mariadb-password"
       - "NEXTCLOUD_ADMIN_USER_FILE=/run/secrets/nextcloud-admin-user"
       - "NEXTCLOUD_ADMIN_PASSWORD_FILE=/run/secrets/nextcloud-admin-password"
-      - "NEXTCLOUD_TRUSTED_DOMAINS=${NETWORK_INTERFACE}:5659 nextcloud.bellecerise.local"
+      - "NEXTCLOUD_TRUSTED_DOMAINS=${NETWORK_INTERFACE}:5659 nextcloud.bellecerise.local nextcloud-web"
       - "REDIS_HOST=redis"
       - "REDIS_HOST_PORT=6379"
+      - "PHP_MEMORY_LIMIT=512M"
+      - "PHP_UPLOAD_LIMIT=16G"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep php-fpm && nc -z 127.0.0.1 9000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   cron:
-    image: "supmagc/nextcloud:latest"
+    image: "nextcloud-local:fpm-alpine"
     container_name: "nextcloud-cron"
+    profiles:
+      - app
     networks:
       - default
       - utilities_default
-    pull_policy: missing
+    pull_policy: never
     restart: always
+    depends_on:
+      nextcloud:
+        condition: service_started
+      rebuilder:
+        condition: service_healthy
     labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.enable=false"
     volumes:
       - "/mnt/leftpool/nextcloud:/var/www/html/data:z"
       - "/mnt/fastpool/system/nextcloud/app/html:/var/www/html:z"
       - "/mnt/fastpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z,ro"
+      - "/mnt/fastpool/system/nextcloud/app/apcu.ini:/usr/local/etc/php/conf.d/zz-apcu.ini:z,ro"
       - "/mnt/fastpool/system/nextcloud/app/cron.sh:/cron-custom.sh:ro"
     environment:
       - "UID=${APP_USER}"
@@ -64,11 +116,19 @@ services:
       - "REDIS_HOST=redis"
       - "REDIS_HOST_PORT=6379"
     entrypoint: /cron-custom.sh
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "crond"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   web:
     image: caddy:2.8.4
     container_name: nextcloud-web
     user: "${APP_USER}:${APP_GROUP}"
+    profiles:
+      - app
     networks:
       - default
     pull_policy: missing
@@ -79,7 +139,8 @@ services:
       - "traefik.http.routers.nextcloud-web.rule=Host(`${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.nextcloud-web.entrypoints=web"
     depends_on:
-      - nextcloud
+      nextcloud:
+        condition: service_healthy
     ports:
       - "${NETWORK_INTERFACE}:5659:80"
     volumes:
@@ -96,35 +157,9 @@ services:
       start_period: 5s
       timeout: 5s
 
-  imaginary:
-    image: "h2non/imaginary:latest"
-    container_name: "imaginary"
-    user: "${APP_USER}:${APP_GROUP}"
-    networks:
-      - default
-    pull_policy: missing
-    restart: always
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
-      - "traefik.http.routers.imaginaryb.rule=Host(`imaginary.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.imaginary.entrypoints=web"
-    ports:
-      - "${NETWORK_INTERFACE}:9000:9000"
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    environment:
-      - PORT=9000
-    cap_add:
-      - SYS_NICE
-    tmpfs:
-      - /tmp
-
   onlyoffice:
     container_name: onlyoffice
     image: onlyoffice/documentserver:latest
-#    user: "${APP_USER}:${APP_GROUP}"
     networks:
       - default
       - utilities_default
@@ -159,6 +194,81 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+
+  rebuilder:
+    image: docker:cli
+    container_name: nextcloud-rebuilder
+    restart: always
+    environment:
+      - CHECK_INTERVAL=21600
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/stack
+    working_dir: /stack
+    entrypoint: sh
+    command:
+      - -c
+      - |
+        set -eu
+        apk add --no-cache docker-cli-buildx docker-cli-compose >/dev/null
+
+        BASE_IMAGE=nextcloud:fpm-alpine
+        IMAGE_TAG=nextcloud-local:fpm-alpine
+        STATE_FILE=/stack/.nextcloud-base-digest
+        COMPOSE="docker compose"
+
+        printf '%s' 'FROM nextcloud:fpm-alpine
+        RUN set -ex; \
+            apk add --no-cache \
+                ffmpeg \
+                imagemagick \
+                procps \
+                samba-client \
+                exiftool \
+            ;
+        ADD --link https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+        RUN chmod +x /usr/local/bin/install-php-extensions && \
+            install-php-extensions bz2 imap smbclient
+        ENV NEXTCLOUD_UPDATE=1
+        ' > /tmp/Dockerfile
+
+        build_image() {
+          echo "$(date -Iseconds) building $$IMAGE_TAG"
+          docker build --pull -f /tmp/Dockerfile -t "$$IMAGE_TAG" /tmp
+        }
+
+        if ! docker image inspect "$$IMAGE_TAG" >/dev/null 2>&1; then
+          echo "$(date -Iseconds) no local image yet, building for the first time"
+          build_image
+          docker buildx imagetools inspect "$$BASE_IMAGE" 2>/dev/null \
+            | awk '/^Digest:/{print $2; exit}' > "$$STATE_FILE"
+        fi
+
+        while true; do
+          remote_digest=$(docker buildx imagetools inspect "$$BASE_IMAGE" 2>/dev/null \
+            | awk '/^Digest:/{print $2; exit}')
+          last_digest=$(cat "$$STATE_FILE" 2>/dev/null || echo "")
+
+          if [ -n "$$remote_digest" ] && [ "$$remote_digest" != "$$last_digest" ]; then
+            echo "$(date -Iseconds) base image changed ($$last_digest -> $$remote_digest), rebuilding"
+            if build_image; then
+              $$COMPOSE up -d --no-deps nextcloud cron
+              echo "$$remote_digest" > "$$STATE_FILE"
+            else
+              echo "$(date -Iseconds) build failed, will retry next cycle"
+            fi
+          else
+            echo "$(date -Iseconds) no change ($$remote_digest)"
+          fi
+
+          sleep "$$CHECK_INTERVAL"
+        done
+    healthcheck:
+      test: ["CMD", "docker", "image", "inspect", "nextcloud-local:fpm-alpine"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
 
 secrets:
   nextcloud-mariadb-host:
