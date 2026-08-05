@@ -174,8 +174,14 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.onlyoffice-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.onlyoffice.rule=Host(`onlyoffice.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.onlyoffice.entrypoints=web"
+      - "traefik.http.routers.onlyoffice.middlewares=onlyoffice-https-redirect"
+      - "traefik.http.routers.onlyoffice-secure.rule=Host(`onlyoffice.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.onlyoffice-secure.entrypoints=web-secure"
+      - "traefik.http.routers.onlyoffice-secure.tls=true"
+      - "traefik.http.routers.onlyoffice-secure.tls.certresolver=stepca"
     ports:
       - '${NETWORK_INTERFACE}:5658:80'
     volumes:
