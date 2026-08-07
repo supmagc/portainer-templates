@@ -22,8 +22,14 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.stash-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.stash.rule=Host(`stash.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.stash.entrypoints=web"
+      - "traefik.http.routers.stash.middlewares=stash-https-redirect"
+      - "traefik.http.routers.stash-secure.rule=Host(`stash.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.stash-secure.entrypoints=web-secure"
+      - "traefik.http.routers.stash-secure.tls=true"
+      - "traefik.http.routers.stash-secure.tls.certresolver=stepca"
     ports:
       - "${NETWORK_INTERFACE}:9999:9999"
     volumes:
@@ -63,8 +69,14 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.namer-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.namer.rule=Host(`namer.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.namer.entrypoints=web"
+      - "traefik.http.routers.namer.middlewares=namer-https-redirect"
+      - "traefik.http.routers.namer-secure.rule=Host(`namer.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.namer-secure.entrypoints=web-secure"
+      - "traefik.http.routers.namer-secure.tls=true"
+      - "traefik.http.routers.namer-secure.tls.certresolver=stepca"
     ports:
       - "${NETWORK_INTERFACE}:6980:6980"
     environment:
@@ -91,8 +103,14 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.whisparr-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.whisparr.rule=Host(`whisparr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.whisparr.entrypoints=web"
+      - "traefik.http.routers.whisparr.middlewares=whisparr-https-redirect"
+      - "traefik.http.routers.whisparr-secure.rule=Host(`whisparr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.whisparr-secure.entrypoints=web-secure"
+      - "traefik.http.routers.whisparr-secure.tls=true"
+      - "traefik.http.routers.whisparr-secure.tls.certresolver=stepca"
     ports:
       - "${NETWORK_INTERFACE}:6969:6969"
     environment:

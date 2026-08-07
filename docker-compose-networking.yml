@@ -123,6 +123,51 @@ services:
       timeout: 10s
       retries: 3
 
+  traefik-edge:
+    image: "traefik:latest"
+    container_name: "traefik-edge"
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true"
+      - "--providers.file.directory=/dynamic"
+      - "--providers.file.watch=true"
+      - "--entryPoints.web.address=:80"
+      - "--entryPoints.web-secure.address=:443"
+      - "--certificatesresolvers.dynu.acme.dnschallenge=true"
+      - "--certificatesresolvers.dynu.acme.dnschallenge.provider=dynu"
+      - "--certificatesresolvers.dynu.acme.dnschallenge.resolvers=ns1.dynu.com:53,ns2.dynu.com:53,ns3.dynu.com:53,ns4.dynu.com:53,ns5.dynu.com:53,ns6.dynu.com:53"
+      - "--certificatesresolvers.dynu.acme.dnschallenge.delaybeforecheck=30"
+      - "--certificatesresolvers.dynu.acme.storage=/acme/acme.json"
+      - "--certificatesresolvers.dynu.acme.email=admin@bellecerise.be"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.traefik-edge-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.traefik-edge.rule=Host(`traefik-edge.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.traefik-edge.entrypoints=web"
+      - "traefik.http.routers.traefik-edge.middlewares=traefik-edge-https-redirect"
+      - "traefik.http.routers.traefik-edge-secure.rule=Host(`traefik-edge.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.traefik-edge-secure.entrypoints=web-secure"
+      - "traefik.http.routers.traefik-edge-secure.tls=true"
+      - "traefik.http.routers.traefik-edge-secure.tls.certresolver=stepca"
+      - "traefik.http.services.traefik-edge-traefik-edge.loadbalancer.server.port=8080"
+    secrets:
+      - dynu-api-key
+    ports:
+      - "${NETWORK_INTERFACE_EDGE}:80:80"
+      - "${NETWORK_INTERFACE_EDGE}:443:443"
+      - "${NETWORK_INTERFACE}:8081:8080"
+    volumes:
+      - "/mnt/fastpool/system/processes/traefik-edge/acme:/acme"
+      - "/mnt/fastpool/system/processes/traefik-edge/dynamic:/dynamic:ro"
+    environment:
+      - DYNU_API_KEY_FILE=/run/secrets/dynu-api-key
+
 secrets:
   step-ca-password:
     file: /mnt/fastpool/system/processes/secrets/step-ca-password.txt
+  dynu-api-key:
+    file: /mnt/fastpool/system/processes/secrets/dynu-api-key.txt

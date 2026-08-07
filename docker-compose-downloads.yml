@@ -19,8 +19,14 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.sabnzbd-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.sabnzbd.entrypoints=web"
+      - "traefik.http.routers.sabnzbd.middlewares=sabnzbd-https-redirect"
+      - "traefik.http.routers.sabnzbd-secure.rule=Host(`sabnzbd.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.sabnzbd-secure.entrypoints=web-secure"
+      - "traefik.http.routers.sabnzbd-secure.tls=true"
+      - "traefik.http.routers.sabnzbd-secure.tls.certresolver=stepca"
       - "traefik.http.services.sabnzbd-multimedia.loadbalancer.server.port=8181"
     ports:
       - ${NETWORK_INTERFACE}:8181:8181/tcp
@@ -68,8 +74,14 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.qbittorrent-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.qbittorrent.entrypoints=web"
+      - "traefik.http.routers.qbittorrent.middlewares=qbittorrent-https-redirect"
+      - "traefik.http.routers.qbittorrent-secure.rule=Host(`qbittorrent.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.qbittorrent-secure.entrypoints=web-secure"
+      - "traefik.http.routers.qbittorrent-secure.tls=true"
+      - "traefik.http.routers.qbittorrent-secure.tls.certresolver=stepca"
       - "traefik.http.services.qbittorrent-multimedia.loadbalancer.server.port=8282"
     ports:
       - ${NETWORK_INTERFACE}:8282:8282/tcp
@@ -103,8 +115,14 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.prowlarr-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.prowlarr.entrypoints=web"
+      - "traefik.http.routers.prowlarr.middlewares=prowlarr-https-redirect"
+      - "traefik.http.routers.prowlarr-secure.rule=Host(`prowlarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.prowlarr-secure.entrypoints=web-secure"
+      - "traefik.http.routers.prowlarr-secure.tls=true"
+      - "traefik.http.routers.prowlarr-secure.tls.certresolver=stepca"
     ports:
       - ${NETWORK_INTERFACE}:9696:9696/tcp
     volumes:
@@ -132,8 +150,14 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
+      - "traefik.http.middlewares.spotweb-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.spotweb.rule=Host(`spotweb.${NETWORK_DOMAIN}`)"
       - "traefik.http.routers.spotweb.entrypoints=web"
+      - "traefik.http.routers.spotweb.middlewares=spotweb-https-redirect"
+      - "traefik.http.routers.spotweb-secure.rule=Host(`spotweb.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.spotweb-secure.entrypoints=web-secure"
+      - "traefik.http.routers.spotweb-secure.tls=true"
+      - "traefik.http.routers.spotweb-secure.tls.certresolver=stepca"
     ports:
       - ${NETWORK_INTERFACE}:6868:80/tcp
     environment:
