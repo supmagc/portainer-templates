@@ -39,8 +39,6 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entryPoints.web.address=:80"
       - "--entryPoints.web-secure.address=:443"
-      - "--entryPoints.zabbix-tcp.address=:10051"
-      - "--entryPoints.zabbix-udp.address=:10051/udp"
       - "--ping=true"
       - "--ping.entryPoint=ping"
       - "--entrypoints.ping.address=:8081"
@@ -65,8 +63,6 @@ services:
       - "${NETWORK_INTERFACE}:80:80"
       - "${NETWORK_INTERFACE}:443:443"
       - "${NETWORK_INTERFACE}:8080:8080"
-      - "${NETWORK_INTERFACE}:10051:10051/tcp"
-      - "${NETWORK_INTERFACE}:10051:10051/udp"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "/mnt/fastpool/system/processes/traefik/stepca:/stepca"

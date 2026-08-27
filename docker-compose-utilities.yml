@@ -169,6 +169,7 @@ services:
       - ${NETWORK_INTERFACE}:15672:15672/tcp
     volumes:
       - /mnt/fastpool/system/processes/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - /mnt/fastpool/system/processes/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
       - /mnt/fastpool/system/processes/rabbitmq/data/:/var/lib/rabbitmq/
       - /mnt/fastpool/system/processes/rabbitmq/log/:/var/log/rabbitmq
     healthcheck:
@@ -176,6 +177,28 @@ services:
       interval: 5s
       timeout: 15s
       retries: 1
+    # enabled_plugins host file must list both explicitly (replaces the image's
+    # baked-in default, doesn't merge with it):
+    #   [rabbitmq_management,rabbitmq_prometheus].
+    # exposes the prometheus plugin on :15692 for prometheus's "rabbitmq" scrape job
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    networks:
+      - default
+    pull_policy: missing
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - "WATCHTOWER_SCHEDULE=0 0 4 * * *"
+      - "WATCHTOWER_CLEANUP=true"
+      - "WATCHTOWER_LABEL_ENABLE=true"
+      - "WATCHTOWER_NOTIFICATION_URL=pushover://:${PUSHOVER_TOKEN}@${PUSHOVER_USER}/?"
 
   dupeguru:
     image: jlesage/dupeguru:latest

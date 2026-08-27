@@ -6,139 +6,361 @@ networks:
   default:
     driver: bridge
   utilities_default:
-    external: true
+    external: true   # redis, rabbitmq, mariadb
   nextcloud_default:
-    external: true
+    external: true   # nextcloud-web
+  multimedia_default:
+    external: true   # emby, sonarr, radarr, lidarr, bazarr
+  downloads_default:
+    external: true   # prowlarr
+  networking_default:
+    external: true   # step-ca
 
 services:
-  zabbix-server:
-    image: zabbix/zabbix-server-mysql:latest
-    container_name: zabbix-server
-    hostname: zabbix-server
-    networks: 
-      - default
-      - utilities_default
-    pull_policy: missing
-    restart: always
-    stop_grace_period: 45s
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
-      - "traefik.tcp.routers.zabbix-server-tcp.rule=HostSNI(`*`)"
-      - "traefik.tcp.routers.zabbix-server-tcp.entrypoints=zabbix-tcp"
-      - "traefik.tcp.routers.zabbix-server-tcp.service=zabbix-server-tcp"
-      - "traefik.tcp.services.zabbix-server-tcp.loadbalancer.server.port=10051"
-      - "traefik.udp.routers.zabbix-server-udp.entrypoints=zabbix-udp"
-      - "traefik.udp.routers.zabbix-server-udp.service=zabbix-server-udp"
-      - "traefik.udp.services.zabbix-server-udp.loadbalancer.server.port=10051"
-    secrets:
-      - zabbix-mariadb-password
-      - zabbix-mariadb-user
-    volumes:
-      - /mnt/fastpool/system/processes/zabbix/server:/var/lib/zabbix
-      - /mnt/fastpool/system/processes/zabbix/snmptraps:/var/lib/zabbix/snmptraps
-      - /mnt/fastpool/system/processes/zabbix/export:/var/lib/zabbix/export
-    environment:
-      DB_SERVER_HOST: mariadb
-      MYSQL_USER_FILE: /run/secrets/zabbix-mariadb-user
-      MYSQL_PASSWORD_FILE: /run/secrets/zabbix-mariadb-password
-      MYSQL_DATABASE: zabbix
-      ZBX_ALLOWUNSUPPORTEDDBVERSIONS: 1
-
-  zabbix-web-nginx-mysql:
-    image: zabbix/zabbix-web-nginx-mysql:latest
-    container_name: zabbix-web
-    hostname: zabbix-web
-    networks: 
-      - default
-      - utilities_default
-    pull_policy: missing
-    restart: always
-    depends_on:
-      - zabbix-server
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
-      - "traefik.http.routers.zabbix.rule=Host(`zabbix.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.zabbix.entrypoints=web"
-    secrets:
-      - zabbix-mariadb-password
-      - zabbix-mariadb-user
-    ports:
-      - "${NETWORK_INTERFACE}:5454:8080"
-    environment:
-      DB_SERVER_HOST: mariadb
-      MYSQL_USER_FILE: /run/secrets/zabbix-mariadb-user
-      MYSQL_PASSWORD_FILE: /run/secrets/zabbix-mariadb-password
-      MYSQL_DATABASE: zabbix
-      ZBX_SERVER_HOST: zabbix-server
-      PHP_TZ: ${APP_TIMEZONE}
-
-  zabbix-agent:
-    image: zabbix/zabbix-agent2:latest
-    container_name: zabbix-agent
-    hostname: zabbix-agent
-    privileged: true
-    group_add:
-      - "999"
-    networks: 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    networks:
       - default
       - utilities_default
       - nextcloud_default
+      - multimedia_default
+      - downloads_default
+      - networking_default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
+    user: "${APP_USER}:${APP_GROUP}"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.prometheus-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.prometheus.entrypoints=web"
+      - "traefik.http.routers.prometheus.middlewares=prometheus-https-redirect"
+      - "traefik.http.routers.prometheus-secure.rule=Host(`prometheus.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.prometheus-secure.entrypoints=web-secure"
+      - "traefik.http.routers.prometheus-secure.tls=true"
+      - "traefik.http.routers.prometheus-secure.tls.certresolver=stepca"
+    volumes:
+      - /mnt/fastpool/system/processes/prometheus/data:/prometheus
+      - /mnt/fastpool/system/processes/prometheus/config.yml:/etc/prometheus/config.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/config.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
     depends_on:
-      - zabbix-server
+      - prometheus
+    user: "${APP_USER}:${APP_GROUP}"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.grafana-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.grafana.entrypoints=web"
+      - "traefik.http.routers.grafana.middlewares=grafana-https-redirect"
+      - "traefik.http.routers.grafana-secure.rule=Host(`grafana.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.grafana-secure.entrypoints=web-secure"
+      - "traefik.http.routers.grafana-secure.tls=true"
+      - "traefik.http.routers.grafana-secure.tls.certresolver=stepca"
+    volumes:
+      - /mnt/fastpool/system/processes/grafana/data:/var/lib/grafana
+      - /mnt/fastpool/system/processes/grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SERVER_ROOT_URL=https://grafana.${NETWORK_DOMAIN}
+      - TZ=${APP_TIMEZONE}
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    user: "${APP_USER}:${APP_GROUP}"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.loki-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.loki.rule=Host(`loki.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.loki.entrypoints=web"
+      - "traefik.http.routers.loki.middlewares=loki-https-redirect"
+      - "traefik.http.routers.loki-secure.rule=Host(`loki.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.loki-secure.entrypoints=web-secure"
+      - "traefik.http.routers.loki-secure.tls=true"
+      - "traefik.http.routers.loki-secure.tls.certresolver=stepca"
+    volumes:
+      - /mnt/fastpool/system/processes/loki/data:/loki
+      - /mnt/fastpool/system/processes/loki/config.yml:/etc/loki/local-config.yaml:ro
+    command:
+      - "-config.file=/etc/loki/local-config.yaml"
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    # HEAVY: Loki's footprint is driven by label cardinality of active streams, not log
+    # volume — keep promtail's label set narrow (job/container/app only, no free-form labels).
+    # Traefik label added so the Pi's promtail can push to https://loki.${NETWORK_DOMAIN}
+    # without a raw published port.
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    group_add:
+      - "910"
+      - "930"
+      - "950"
+      - "960"
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/rootfs:ro
-      - /var/run:/var/run
-    environment:
-      ZBX_HOSTNAME: NAS
-      ZBX_SERVER_HOST: zabbix-server
-      ZBX_SERVER_PORT: 10051
-      ZBX_PASSIVE_ALLOW: true
-      ZBX_ACTIVE_ALLOW: true
-      ZBX_ENABLEPERSISTENTBUFFER: true
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro   # VERIFY: docker info --format '{{.DockerRootDir}}'
+      - /mnt/fastpool/system/processes/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /mnt/fastpool/system/processes/promtail/positions:/tmp/positions
+      - /mnt/fastpool/system/multimedia/sonarr/logs:/var/log/apps/sonarr:ro
+      - /mnt/fastpool/system/multimedia/radarr/logs:/var/log/apps/radarr:ro
+      - /mnt/fastpool/system/multimedia/lidarr/logs:/var/log/apps/lidarr:ro
+      - /mnt/fastpool/system/multimedia/bazarr/log:/var/log/apps/bazarr:ro
+      - /mnt/fastpool/system/downloads/prowlarr/logs:/var/log/apps/prowlarr:ro
+      - /mnt/leftpool/nextcloud/nextcloud.log:/var/log/apps/nextcloud/nextcloud.log:ro
+    command:
+      - "-config.file=/etc/promtail/config.yml"
+    # runs as root (no `user:`) — matches repo's observe-only docker.sock pattern
+    # (old zabbix-agent, traefik). VERIFY exact *arr log subdirectory names against
+    # the live filesystem before deploying (LSIO convention assumed: /config/logs).
 
-  zabbix-snmp-traps:
-    image: zabbix/zabbix-snmptraps:latest
-    container_name: zabbix-snmptraps
-    hostname: zabbix-snmptraps
-    networks: 
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    networks:
       - default
     pull_policy: missing
-    restart: always
-    depends_on:
-      - zabbix-server
+    restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     volumes:
-      - /mnt/fastpool/system/processes/zabbix/snmptraps:/var/lib/zabbix/snmptraps
-
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: watchtower
-    networks: 
-      - default
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
-      #- "--debug"
-      - "--cleanup"
-      - "--label-enable"
+      - "--housekeeping_interval=30s"
+      - "--docker_only=true"
+      - "--store_container_labels=false"
+      - "--disable_metrics=advtcp,cpu_topology,cpuset,disk,hugetlb,memory_numa,process,referenced_memory,resctrl,sched,tcp,udp"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    # HEAVY by default (1s housekeeping + full metric set) — flags above are the
+    # standard home-lab mitigation, don't deploy without them.
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    networks:
+      - default
     pull_policy: missing
-    restart: always
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /:/host/root:ro,rslave
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    command:
+      - "--path.rootfs=/host/root"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)"
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    container_name: blackbox-exporter
+    networks:
+      - default
+      - utilities_default
+      - nextcloud_default
+      - multimedia_default
+      - networking_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /mnt/fastpool/system/processes/blackbox/config.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - "--config.file=/etc/blackbox_exporter/config.yml"
+
+  snmp-exporter:
+    image: prom/snmp-exporter:latest
+    container_name: snmp-exporter
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /mnt/fastpool/system/processes/snmp/config.yml:/etc/snmp_exporter/config.yml:ro
+    command: ["--config.file=/etc/snmp_exporter/config.yml"]
+
+  smartctl-exporter:
+    image: prometheuscommunity/smartctl-exporter:latest
+    container_name: smartctl-exporter
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    privileged: true   # raw ioctl access to /dev/sd* for S.M.A.R.T. queries
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /dev:/dev
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     environment:
-      - TZ=${APP_TIMEZONE}
-      - "WATCHTOWER_SCHEDULE=0 0 4 * * *"
-      - "WATCHTOWER_NOTIFICATION_URL=pushover://:${PUSHOVER_TOKEN}@${PUSHOVER_USER}/?"
+      - REDIS_ADDR=redis://redis:6379
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:latest
+    container_name: mysqld-exporter
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    secrets:
+      - mysqld-exporter-cnf
+    command:
+      - "--config.my-cnf=/run/secrets/mysqld-exporter-cnf"
+      - "--collect.info_schema.tables"
+      - "--collect.info_schema.innodb_metrics"
+      - "--collect.global_status"
+
+  exportarr-sonarr:
+    image: ghcr.io/onedr0p/exportarr:latest
+    container_name: exportarr-sonarr
+    command: ["sonarr"]
+    networks:
+      - default
+      - multimedia_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - URL=http://sonarr:8989
+      - API_KEY=${SONARR_API_KEY}
+      - PORT=8081
+
+  exportarr-radarr:
+    image: ghcr.io/onedr0p/exportarr:latest
+    container_name: exportarr-radarr
+    command: ["radarr"]
+    networks:
+      - default
+      - multimedia_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - URL=http://radarr:7878
+      - API_KEY=${RADARR_API_KEY}
+      - PORT=8081
+
+  exportarr-lidarr:
+    image: ghcr.io/onedr0p/exportarr:latest
+    container_name: exportarr-lidarr
+    command: ["lidarr"]
+    networks:
+      - default
+      - multimedia_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - URL=http://lidarr:8686
+      - API_KEY=${LIDARR_API_KEY}
+      - PORT=8081
+
+  exportarr-bazarr:
+    image: ghcr.io/onedr0p/exportarr:latest
+    container_name: exportarr-bazarr
+    command: ["bazarr"]
+    networks:
+      - default
+      - multimedia_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - URL=http://bazarr:6767
+      - API_KEY=${BAZARR_API_KEY}
+      - PORT=8081
+
+  exportarr-prowlarr:
+    image: ghcr.io/onedr0p/exportarr:latest
+    container_name: exportarr-prowlarr
+    command: ["prowlarr"]
+    networks:
+      - default
+      - downloads_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - URL=http://prowlarr:9696
+      - API_KEY=${PROWLARR_API_KEY}
+      - PORT=8081
+
+  nextcloud-exporter:
+    image: xperimental/nextcloud-exporter:latest
+    container_name: nextcloud-exporter
+    networks:
+      - default
+      - nextcloud_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - NEXTCLOUD_SERVER=http://nextcloud-web
+      - NEXTCLOUD_AUTH_TOKEN=${NEXTCLOUD_EXPORTER_TOKEN}
 
 secrets:
-  zabbix-mariadb-user:
-    file: /mnt/fastpool/system/processes/secrets/zabbix-mariadb-user.txt
-  zabbix-mariadb-password:
-    file: /mnt/fastpool/system/processes/secrets/zabbix-mariadb-password.txt
-  
+  mysqld-exporter-cnf:
+    file: /mnt/fastpool/system/processes/secrets/mysqld-exporter.cnf
