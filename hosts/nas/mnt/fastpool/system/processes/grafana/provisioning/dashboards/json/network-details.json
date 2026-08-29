@@ -2,7 +2,7 @@
   "title": "Network Details",
   "uid": "network-details",
   "schemaVersion": 39,
-  "version": 4,
+  "version": 7,
   "editable": true,
   "tags": ["infra", "network", "snmp"],
   "timezone": "",
@@ -50,22 +50,19 @@
       "targets": [{ "expr": "time() - node_boot_time_seconds{job=\"openwrt\"}", "instant": true, "refId": "A" }]
     },
     {
-      "id": 10,
-      "title": "Router Free Disk Space",
-      "description": "Excludes tmpfs/squashfs/proc/sysfs (not meaningful - squashfs in particular is OpenWrt's fixed-size read-only base image, always ~full by design). Watch the writable overlay mountpoint specifically.",
+      "id": 11,
+      "title": "Router Network Traffic (bits/sec)",
+      "description": "Per-interface RX/TX for the router itself - real switch ports (lan1-4), the SoC NIC (eth0), WAN (wan/pppoe-wan), VLAN sub-interfaces (br-lan.10/.20/.30/.99), and vpn. Excludes lo, wlan0/wlan1 (flat 0 - wifi is disabled on this device), and ifb4* (internal SQM/QoS ingress-shaping helpers, not real links).",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 6 },
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
-        "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 15, "lineWidth": 1 } },
+        "defaults": { "unit": "bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } },
         "overrides": []
       },
       "targets": [
-        {
-          "expr": "(node_filesystem_avail_bytes{job=\"openwrt\", fstype!~\"tmpfs|squashfs|proc|sysfs|devtmpfs\"} / node_filesystem_size_bytes{job=\"openwrt\", fstype!~\"tmpfs|squashfs|proc|sysfs|devtmpfs\"}) * 100",
-          "legendFormat": "{{mountpoint}}",
-          "refId": "A"
-        }
+        { "expr": "rate(node_network_receive_bytes_total{job=\"openwrt\", device!~\"lo|wlan.*|ifb4.*\"}[$__rate_interval]) * 8", "legendFormat": "{{device}} in", "refId": "A" },
+        { "expr": "rate(node_network_transmit_bytes_total{job=\"openwrt\", device!~\"lo|wlan.*|ifb4.*\"}[$__rate_interval]) * 8", "legendFormat": "{{device}} out", "refId": "B" }
       ]
     },
     {
@@ -73,7 +70,7 @@
       "title": "Switch Port Status & Speed",
       "description": "ifOperStatus (1=up, 2=down) merged with ifHighSpeed (Mbps, negotiated) per port, from IF-MIB (standard RFC 2863 - ifTable/ifXTable, walked by snmp-exporter's if_mib module). Merged via the 'merge' transform since both queries share the same port labels (ifDescr/ifIndex/ifName).",
       "type": "table",
-      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 9 },
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
@@ -105,7 +102,7 @@
       "title": "Switch Port Traffic (bits/sec)",
       "description": "Using ifHCInOctets/ifHCOutOctets (64-bit) - confirmed live via the Grafana MCP that this switch does populate them (all 28 ports return real counters), so no 32-bit wraparound risk here. (Earlier this panel used the 32-bit fallback based on an empty-panel report that turned out not to be an HC-support issue after all.)",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 9 },
+      "gridPos": { "x": 0, "y": 22, "w": 24, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "unit": "bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } },
@@ -121,7 +118,7 @@
       "title": "Switch Port Errors",
       "description": "Combined in+out error rate per port. Should be flat zero on healthy links - anything nonzero points at a bad cable/NIC.",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 28, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 15, "lineWidth": 1 } },
@@ -136,7 +133,7 @@
       "title": "AP Status",
       "description": "Same ifOperStatus check as the switch, per AP (job=snmp-ap, targets .3/.4/.5). Only interface-level status/counters are available - no per-AP wifi client count or signal data, since if_mib is generic IF-MIB, not a vendor wireless MIB. If these APs are Omada-controller-managed, that data (if it exists at all outside the controller) would need polling the Omada Controller API instead - separate piece of work, flagging rather than guessing.",
       "type": "table",
-      "gridPos": { "x": 0, "y": 36, "w": 8, "h": 8 },
+      "gridPos": { "x": 0, "y": 39, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -161,7 +158,7 @@
       "title": "AP Uplink Traffic (bits/sec)",
       "description": "ifInOctets/ifOutOctets (32-bit) - confirmed via the Grafana MCP that these APs genuinely don't populate the HC counters (unlike the switch), so the 32-bit wraparound caveat from Switch Port Traffic's earlier notes still applies here. Filtered to ifDescr=\"eth0\" specifically (the real wired uplink) rather than summing every interface - these APs also expose br0 (bridge) and 8 wifi/ath* virtual interfaces per SSID/radio, and summing everything double-counts through the bridge. Per-SSID/radio traffic breakdown is available (ifDescr=~\"ath.*|wifi.*\") if useful later.",
       "type": "timeseries",
-      "gridPos": { "x": 8, "y": 36, "w": 16, "h": 8 },
+      "gridPos": { "x": 8, "y": 39, "w": 16, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "unit": "bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } },
