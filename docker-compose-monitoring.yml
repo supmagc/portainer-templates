@@ -110,10 +110,6 @@ services:
       resources:
         limits:
           memory: 768M
-    # HEAVY: Loki's footprint is driven by label cardinality of active streams, not log
-    # volume — keep promtail's label set narrow (job/container/app only, no free-form labels).
-    # Traefik label added so the Pi's promtail can push to https://loki.${NETWORK_DOMAIN}
-    # without a raw published port.
 
   promtail:
     image: grafana/promtail:latest
@@ -142,9 +138,6 @@ services:
       - /mnt/leftpool/nextcloud/nextcloud.log:/var/log/apps/nextcloud/nextcloud.log:ro
     command:
       - "-config.file=/etc/promtail/config.yml"
-    # runs as root (no `user:`) — matches repo's observe-only docker.sock pattern
-    # (old zabbix-agent, traefik). VERIFY exact *arr log subdirectory names against
-    # the live filesystem before deploying (LSIO convention assumed: /config/logs).
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
@@ -170,8 +163,6 @@ services:
       resources:
         limits:
           memory: 384M
-    # HEAVY by default (1s housekeeping + full metric set) — flags above are the
-    # standard home-lab mitigation, don't deploy without them.
 
   node-exporter:
     image: prom/node-exporter:latest
@@ -186,11 +177,13 @@ services:
       - /:/host/root:ro,rslave
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
+      - /mnt/fastpool/system/processes/node-exporter/textfile:/textfile:ro
     command:
       - "--path.rootfs=/host/root"
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
       - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)"
+      - "--collector.textfile.directory=/textfile"
 
   blackbox-exporter:
     image: prom/blackbox-exporter:latest
@@ -230,7 +223,8 @@ services:
       - default
     pull_policy: missing
     restart: unless-stopped
-    privileged: true   # raw ioctl access to /dev/sd* for S.M.A.R.T. queries
+    privileged: true
+    user: root
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     volumes:
