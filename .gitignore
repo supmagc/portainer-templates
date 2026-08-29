@@ -1,1 +1,4 @@
 *-old.*
+scratchpad/
+.mcp.json
+.deploy-state.json

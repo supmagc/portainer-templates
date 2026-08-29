@@ -1,0 +1,27 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Must be >= the slowest scrape_interval among any job queried with rate() -
+      # snmp-switch/snmp-ap at 60s is currently the slowest (smartctl is 5m but
+      # only ever queried with instant queries, not rate(), so it doesn't count
+      # here). Grafana's $__rate_interval is derived from this single global
+      # value, not per-job - too low and rate() queries return no data on short
+      # dashboard time ranges (not enough real samples in the window), while
+      # longer ranges "accidentally" work because the auto-computed step grows
+      # large enough anyway. Confirmed via Grafana's own datasource docs.
+      timeInterval: "60s"
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false

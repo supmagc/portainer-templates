@@ -1,0 +1,458 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: home-alerts-default
+    folder: Alerts
+    interval: 1m
+    rules:
+      - uid: target-down
+        title: TargetDown
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: up
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} target down"
+          description: "Scrape target {{ $labels.instance }} (job={{ $labels.job }}) has been down for 5+ minutes."
+
+      - uid: container-crash-looping
+        title: ContainerCrashLooping
+        condition: C
+        for: 0m
+        noDataState: OK   # TargetDown already covers "the exporter is unreachable" - this just avoids duplicating that via the noisy synthetic DatasourceNoData alert
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: changes(container_start_time_seconds{name!=""}[15m])
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [2]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} is restarting repeatedly"
+          description: "Container {{ $labels.name }} has restarted {{ $values.B.Value }} times in the last 15 minutes."
+
+      - uid: disk-space-low
+        title: DiskSpaceLow
+        condition: C
+        for: 10m
+        noDataState: OK   # see ContainerCrashLooping above - TargetDown covers exporter-unreachable already
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              # fstype!="zfs": per-dataset % free is meaningless for ZFS - see PoolSpaceLow/
+              # PoolSpaceCritical below for the real ZFS pool-capacity check. This rule now
+              # only covers non-ZFS mounts (boot-pool overlay bits, USB, etc.).
+              datasource: {type: prometheus, uid: prometheus}
+              expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"}) * 100
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [15]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ $labels.mountpoint }}"
+          description: "{{ $labels.mountpoint }} on {{ $labels.instance }} has only {{ $values.B.Value }}% free space left."
+
+      - uid: disk-space-critical
+        title: DiskSpaceCritical
+        condition: C
+        for: 5m
+        noDataState: OK   # see ContainerCrashLooping above
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              # see DiskSpaceLow above - ZFS mounts excluded, covered by PoolSpaceCritical instead
+              datasource: {type: prometheus, uid: prometheus}
+              expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"}) * 100
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [5]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk space on {{ $labels.mountpoint }}"
+          description: "{{ $labels.mountpoint }} on {{ $labels.instance }} has only {{ $values.B.Value }}% free space left — act now."
+
+      - uid: probe-failing
+        title: ProbeFailing
+        condition: C
+        for: 3m
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: probe_success
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} unreachable"
+          description: "Blackbox probe against {{ $labels.instance }} (job={{ $labels.job }}) has been failing for 3+ minutes."
+
+      # Real ZFS pool capacity, sourced from a node-exporter textfile-collector
+      # metric (zpool_capacity_percent) - see scratchpad/host-configs/node-exporter/
+      # zpool-metrics.sh. node_filesystem_* can't be used for this: ZFS datasets
+      # share the pool's free space, so a dataset with little of its own data
+      # always reports near-100% free regardless of how full the pool actually is.
+      - uid: pool-space-low
+        title: PoolSpaceLow
+        condition: C
+        for: 10m
+        noDataState: OK   # see ContainerCrashLooping above - zpool-metrics.sh cron missing a run just means the textfile is briefly stale, not worth its own no-data alert
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: zpool_capacity_percent
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [85]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pool {{ $labels.pool }} is {{ $values.B.Value }}% full"
+          description: "ZFS pool {{ $labels.pool }} has been above 85% capacity for 10+ minutes."
+
+      - uid: pool-space-critical
+        title: PoolSpaceCritical
+        condition: C
+        for: 5m
+        noDataState: OK   # see PoolSpaceLow above
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: zpool_capacity_percent
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [95]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pool {{ $labels.pool }} is {{ $values.B.Value }}% full — act now"
+          description: "ZFS pool {{ $labels.pool }} has been above 95% capacity for 5+ minutes."
+
+      # smartctl_device_smart_status is smartctl's own smart_status.passed field:
+      # 1 = passed, 0 = failed (prometheus-community/smartctl_exporter source, mineSmartStatus()).
+      - uid: disk-smart-failure
+        title: DiskSmartFailure
+        condition: C
+        for: 0m
+        noDataState: OK   # see ContainerCrashLooping above - TargetDown already watches the smartctl job itself
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: smartctl_device_smart_status
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: critical
+        annotations:
+          summary: "SMART failure on {{ $labels.device }}"
+          description: "Disk {{ $labels.device }} on {{ $labels.instance }} is reporting a failed SMART overall-health status. Back it up / replace it."
+
+      - uid: disk-temperature-high
+        title: DiskTemperatureHigh
+        condition: C
+        for: 10m
+        noDataState: OK   # see DiskSmartFailure above
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: smartctl_device_temperature{temperature_type="current"}
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [55]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.device }} running hot ({{ $values.B.Value }}°C)"
+          description: "Disk {{ $labels.device }} on {{ $labels.instance }} has been above 55°C for 10+ minutes. Check airflow/dust."
+
+      - uid: pool-degraded
+        title: PoolDegraded
+        condition: C
+        for: 0m
+        noDataState: OK   # see PoolSpaceLow above
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: zpool_health
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pool {{ $labels.pool }} is not ONLINE"
+          description: "ZFS pool {{ $labels.pool }} is DEGRADED/FAULTED/OFFLINE/UNAVAIL/REMOVED - check `zpool status {{ $labels.pool }}` now."

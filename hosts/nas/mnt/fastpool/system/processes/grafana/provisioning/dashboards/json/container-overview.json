@@ -1,0 +1,309 @@
+{
+  "title": "Container Overview",
+  "uid": "container-overview",
+  "schemaVersion": 39,
+  "version": 4,
+  "editable": true,
+  "tags": ["infra", "cadvisor"],
+  "timezone": "",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": { "query": "label_values(container_last_seen{name!=\"\"}, name)", "refId": "containerVariable" },
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 20,
+      "title": "Error Log Lines — All Containers",
+      "description": "Count of log lines matching /error/i across every container, over the dashboard's time range. Same caveat as the per-container panel: generic text match, not a structured level field.",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container=~\".+\"} |~ \"(?i)error\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Containers with Errors",
+      "description": "Every container with a nonzero error-line count over the dashboard's time range, worst first - row panels can't be conditionally colored, so this table stands in for 'which rows should I expand'.",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "color-background" } },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "container" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "auto" } }] },
+          { "matcher": { "id": "byName", "options": "Value" }, "properties": [{ "id": "displayName", "value": "Error lines" }] }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Error lines", "desc": true }]
+      },
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true } } }
+      ],
+      "targets": [
+        {
+          "expr": "sum by (container) (count_over_time({container=~\".+\"} |~ \"(?i)error\" [$__range]))",
+          "queryType": "instant",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "CPU Spend by Container",
+      "description": "Top 10 containers by CPU usage",
+      "type": "piechart",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": {} },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "pieType": "pie",
+        "tooltip": { "mode": "single", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] },
+        "displayLabels": ["percent"]
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (name) (rate(container_cpu_usage_seconds_total{name!=\"\"}[$__rate_interval])))",
+          "legendFormat": "{{name}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Memory Spend by Container",
+      "description": "Top 10 containers by memory usage",
+      "type": "piechart",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": {} },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "pieType": "pie",
+        "tooltip": { "mode": "single", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] },
+        "displayLabels": ["percent"]
+      },
+      "targets": [
+        {
+          "expr": "topk(10, container_memory_usage_bytes{name!=\"\"})",
+          "legendFormat": "{{name}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "type": "row",
+      "title": "$container",
+      "collapsed": true,
+      "repeat": "container",
+      "repeatDirection": "v",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 2,
+          "title": "CPU Usage (cores)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 0, "w": 6, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "color": { "mode": "continuous-GrYlRd" },
+              "custom": { "fillOpacity": 35, "lineWidth": 1, "gradientMode": "scheme" }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(container_cpu_usage_seconds_total{name=\"$container\"}[$__rate_interval]))",
+              "legendFormat": "CPU",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Memory Usage",
+          "type": "timeseries",
+          "gridPos": { "x": 6, "y": 0, "w": 6, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "min": 0,
+              "color": { "mode": "continuous-BlPu" },
+              "custom": { "fillOpacity": 35, "lineWidth": 1, "gradientMode": "scheme" }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "container_memory_usage_bytes{name=\"$container\"}",
+              "legendFormat": "Memory",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Network RX/TX",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "color": { "mode": "palette-classic" },
+              "custom": { "fillOpacity": 15, "lineWidth": 1, "gradientMode": "opacity" }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "RX" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#5794F2" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "TX" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#FF9830" } }]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(container_network_receive_bytes_total{name=\"$container\"}[$__rate_interval]))",
+              "legendFormat": "RX",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(container_network_transmit_bytes_total{name=\"$container\"}[$__rate_interval]))",
+              "legendFormat": "TX",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Uptime",
+          "description": "Time since the container's last (re)start - container_start_time_seconds from cAdvisor, same metric ContainerCrashLooping alerts on.",
+          "type": "stat",
+          "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": { "unit": "dtdhms", "color": { "mode": "fixed", "fixedColor": "green" } },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "time() - container_start_time_seconds{name=\"$container\"}",
+              "instant": true,
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Error Log Lines",
+          "description": "Count of log lines matching /error/i over the dashboard's time range - generic text match across all containers' raw output, not a structured level field. Source: Loki, via promtail's docker_sd_configs job.",
+          "type": "stat",
+          "gridPos": { "x": 18, "y": 4, "w": 6, "h": 4 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum(count_over_time({container=\"$container\"} |~ \"(?i)error\" [$__range]))",
+              "queryType": "instant",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

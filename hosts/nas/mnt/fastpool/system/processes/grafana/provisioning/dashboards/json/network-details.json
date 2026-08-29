@@ -1,0 +1,176 @@
+{
+  "title": "Network Details",
+  "uid": "network-details",
+  "schemaVersion": 39,
+  "version": 4,
+  "editable": true,
+  "tags": ["infra", "network", "snmp"],
+  "timezone": "",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Router CPU Load (1m)",
+      "description": "node_load1 - router's own wifi radios are disabled, no wifi panels here (see openwrt.lua/cpu.lua source: metric naming confirmed identical to real node_exporter).",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 }] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "node_load1{job=\"openwrt\"}", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Router Memory Used %",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"openwrt\"} / node_memory_MemTotal_bytes{job=\"openwrt\"})", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "title": "Router Uptime",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "dtdhms", "color": { "mode": "fixed", "fixedColor": "green" } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "time() - node_boot_time_seconds{job=\"openwrt\"}", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 10,
+      "title": "Router Free Disk Space",
+      "description": "Excludes tmpfs/squashfs/proc/sysfs (not meaningful - squashfs in particular is OpenWrt's fixed-size read-only base image, always ~full by design). Watch the writable overlay mountpoint specifically.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 15, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "(node_filesystem_avail_bytes{job=\"openwrt\", fstype!~\"tmpfs|squashfs|proc|sysfs|devtmpfs\"} / node_filesystem_size_bytes{job=\"openwrt\", fstype!~\"tmpfs|squashfs|proc|sysfs|devtmpfs\"}) * 100",
+          "legendFormat": "{{mountpoint}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Switch Port Status & Speed",
+      "description": "ifOperStatus (1=up, 2=down) merged with ifHighSpeed (Mbps, negotiated) per port, from IF-MIB (standard RFC 2863 - ifTable/ifXTable, walked by snmp-exporter's if_mib module). Merged via the 'merge' transform since both queries share the same port labels (ifDescr/ifIndex/ifName).",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "mappings", "value": [{ "type": "value", "options": { "1": { "text": "Up", "color": "green" }, "2": { "text": "Down", "color": "red" } } }] },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "Speed (Mbps)" }, "properties": [{ "id": "unit", "value": "short" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true }, "renameByName": { "Value #A": "Status", "Value #B": "Speed (Mbps)" } } }
+      ],
+      "targets": [
+        { "expr": "ifOperStatus{job=\"snmp-switch\"}", "instant": true, "format": "table", "refId": "A" },
+        { "expr": "ifHighSpeed{job=\"snmp-switch\"}", "instant": true, "format": "table", "refId": "B" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Switch Port Traffic (bits/sec)",
+      "description": "Using ifHCInOctets/ifHCOutOctets (64-bit) - confirmed live via the Grafana MCP that this switch does populate them (all 28 ports return real counters), so no 32-bit wraparound risk here. (Earlier this panel used the 32-bit fallback based on an empty-panel report that turned out not to be an HC-support issue after all.)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "8 * rate(ifHCInOctets{job=\"snmp-switch\"}[$__rate_interval])", "legendFormat": "{{ifDescr}} in", "refId": "A" },
+        { "expr": "8 * rate(ifHCOutOctets{job=\"snmp-switch\"}[$__rate_interval])", "legendFormat": "{{ifDescr}} out", "refId": "B" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Switch Port Errors",
+      "description": "Combined in+out error rate per port. Should be flat zero on healthy links - anything nonzero points at a bad cable/NIC.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 28, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 15, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "sum by (ifDescr) (rate(ifInErrors{job=\"snmp-switch\"}[$__rate_interval]) + rate(ifOutErrors{job=\"snmp-switch\"}[$__rate_interval]))", "legendFormat": "{{ifDescr}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "AP Status",
+      "description": "Same ifOperStatus check as the switch, per AP (job=snmp-ap, targets .3/.4/.5). Only interface-level status/counters are available - no per-AP wifi client count or signal data, since if_mib is generic IF-MIB, not a vendor wireless MIB. If these APs are Omada-controller-managed, that data (if it exists at all outside the controller) would need polling the Omada Controller API instead - separate piece of work, flagging rather than guessing.",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 36, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "color-background" } },
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "Up", "color": "green" }, "2": { "text": "Down", "color": "red" } } }
+          ],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "instance" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "auto" } }] },
+          { "matcher": { "id": "byName", "options": "Value" }, "properties": [{ "id": "displayName", "value": "Status" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "job": true } } }],
+      "targets": [{ "expr": "ifOperStatus{job=\"snmp-ap\"}", "instant": true, "format": "table", "refId": "A" }]
+    },
+    {
+      "id": 9,
+      "title": "AP Uplink Traffic (bits/sec)",
+      "description": "ifInOctets/ifOutOctets (32-bit) - confirmed via the Grafana MCP that these APs genuinely don't populate the HC counters (unlike the switch), so the 32-bit wraparound caveat from Switch Port Traffic's earlier notes still applies here. Filtered to ifDescr=\"eth0\" specifically (the real wired uplink) rather than summing every interface - these APs also expose br0 (bridge) and 8 wifi/ath* virtual interfaces per SSID/radio, and summing everything double-counts through the bridge. Per-SSID/radio traffic breakdown is available (ifDescr=~\"ath.*|wifi.*\") if useful later.",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 36, "w": 16, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "8 * rate(ifInOctets{job=\"snmp-ap\", ifDescr=\"eth0\"}[$__rate_interval])", "legendFormat": "{{instance}} in", "refId": "A" },
+        { "expr": "8 * rate(ifOutOctets{job=\"snmp-ap\", ifDescr=\"eth0\"}[$__rate_interval])", "legendFormat": "{{instance}} out", "refId": "B" }
+      ]
+    }
+  ]
+}

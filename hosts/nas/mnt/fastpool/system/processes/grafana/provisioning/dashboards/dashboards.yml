@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: default
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true   # unlike alerting/, dashboards are meant to be tweaked by hand in the UI
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
