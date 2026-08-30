@@ -1,0 +1,145 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    cluster: home-nas
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs: [{targets: ["localhost:9090"]}]
+
+  - job_name: node
+    scrape_interval: 15s
+    static_configs: [{targets: ["node-exporter:9100"], labels: {instance: "nas"}}]
+
+  - job_name: cadvisor
+    scrape_interval: 15s
+    static_configs: [{targets: ["cadvisor:8080"]}]
+
+  - job_name: rabbitmq
+    scrape_interval: 30s
+    static_configs: [{targets: ["rabbitmq:15692"]}]
+
+  - job_name: redis
+    scrape_interval: 30s
+    static_configs: [{targets: ["redis-exporter:9121"]}]
+
+  - job_name: mysqld
+    scrape_interval: 30s
+    static_configs: [{targets: ["mysqld-exporter:9104"]}]
+
+  - job_name: nextcloud
+    scrape_interval: 60s
+    static_configs: [{targets: ["nextcloud-exporter:9205"]}]   # VERIFY default port
+
+  - job_name: emby
+    scrape_interval: 60s
+    static_configs: [{targets: ["emby-exporter:9162"]}]
+
+  - job_name: sabnzbd
+    scrape_interval: 60s
+    static_configs: [{targets: ["sabnzbd-exporter:9387"]}]
+
+  - job_name: qbittorrent
+    scrape_interval: 60s
+    static_configs: [{targets: ["qbittorrent-exporter:8000"]}]
+
+  - job_name: exportarr
+    scrape_interval: 60s
+    static_configs:
+      - targets: ["exportarr-sonarr:8081"]
+        labels: {app: sonarr}
+      - targets: ["exportarr-radarr:8081"]
+        labels: {app: radarr}
+      - targets: ["exportarr-lidarr:8081"]
+        labels: {app: lidarr}
+      - targets: ["exportarr-bazarr:8081"]
+        labels: {app: bazarr}
+      - targets: ["exportarr-prowlarr:8081"]
+        labels: {app: prowlarr}
+
+  # split into two jobs — Prometheus's blackbox `params.module` is job-scoped,
+  # not target-scoped, so mixed-module targets can't share one job.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params: {module: [http_2xx]}
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - http://emby:8096/emby/System/Info/Public
+          - http://rabbitmq:15672/
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: blackbox-exporter:9115}
+
+  # nextcloud-web force-redirects to https, which it doesn't serve internally
+  # (see blackbox/config.yml) — needs its own job since blackbox's `params`
+  # (module selection) is job-scoped, not target-scoped.
+  - job_name: blackbox-nextcloud
+    metrics_path: /probe
+    params: {module: [http_2xx_noredirect]}
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["http://nextcloud-web/"]
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: blackbox-exporter:9115}
+
+  - job_name: blackbox-http-insecure
+    metrics_path: /probe
+    params: {module: [http_2xx_insecure]}
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["https://step-ca:9000/health"]
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: blackbox-exporter:9115}
+
+  - job_name: blackbox-openhabian
+    metrics_path: /probe
+    params: {module: [http_2xx]}
+    static_configs:
+      - targets: ["http://openhabian.bellecerise.local:8080/rest"]   # fill in actual Pi address
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: blackbox-exporter:9115}
+
+  - job_name: snmp-switch
+    scrape_interval: 60s
+    scrape_timeout: 55s   # full 28-port interface-table walk takes longer than the 10s default
+    metrics_path: /snmp
+    params: {module: [if_mib], auth: [public_v2_switch]}
+    static_configs:
+      - targets: ["192.168.0.2"]
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: snmp-exporter:9116}
+
+  - job_name: snmp-ap
+    scrape_interval: 60s
+    scrape_timeout: 55s
+    metrics_path: /snmp
+    params: {module: [if_mib], auth: [public_v2_ap]}
+    static_configs:
+      - targets: ["192.168.0.3", "192.168.0.4", "192.168.0.5"]
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: snmp-exporter:9116}
+
+  - job_name: smartctl
+    scrape_interval: 5m
+    static_configs: [{targets: ["smartctl-exporter:9633"]}]
+
+  - job_name: openwrt
+    scrape_interval: 30s
+    static_configs: [{targets: ["192.168.1.1:9100"]}]   # port/path confirmed (default /metrics) - fill in real LAN IP once listen_interface is set to 'lan'
+
+  - job_name: openhabian
+    scrape_interval: 30s
+    static_configs: [{targets: ["openhabian.bellecerise.local:9100"]}]   # fill in actual Pi address, same one used in blackbox-openhabian below

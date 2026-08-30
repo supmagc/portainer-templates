@@ -12,7 +12,7 @@ networks:
   multimedia_default:
     external: true   # emby, sonarr, radarr, lidarr, bazarr
   downloads_default:
-    external: true   # prowlarr
+    external: true   # prowlarr, sabnzbd, qbittorrent
   networking_default:
     external: true   # step-ca
 
@@ -354,6 +354,50 @@ services:
     environment:
       - NEXTCLOUD_SERVER=http://nextcloud-web
       - NEXTCLOUD_AUTH_TOKEN=${NEXTCLOUD_EXPORTER_TOKEN}
+
+  emby-exporter:
+    image: williamclot/emby_exporter:latest
+    container_name: emby-exporter
+    networks:
+      - default
+      - multimedia_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    command:
+      - "--emby.addr=http://emby:8096/emby"
+      - "--emby.token=${EMBY_API_KEY}"
+
+  sabnzbd-exporter:
+    image: msroest/sabnzbd_exporter:latest
+    container_name: sabnzbd-exporter
+    networks:
+      - default
+      - downloads_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - SABNZBD_BASEURLS=http://sabnzbd:8181/sabnzbd
+      - SABNZBD_APIKEYS=${SABNZBD_API_KEY}
+
+  qbittorrent-exporter:
+    image: ghcr.io/esanchezm/prometheus-qbittorrent-exporter:latest
+    container_name: qbittorrent-exporter
+    networks:
+      - default
+      - downloads_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - QBITTORRENT_HOST=qbittorrent
+      - QBITTORRENT_PORT=8282
+      - QBITTORRENT_USER=${QBITTORRENT_USER}
+      - QBITTORRENT_PASS=${QBITTORRENT_PASSWORD}
 
 secrets:
   mysqld-exporter-cnf:
