@@ -1,0 +1,22 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/lib/promtail/positions.yaml
+
+clients:
+  - url: https://loki.monitoring.bellecerise.local/loki/api/v1/push
+
+scrape_configs:
+  # VERIFY exact path/filename — this is openHABian's conventional log location,
+  # not independently confirmed against this specific install
+  - job_name: openhab
+    static_configs:
+      - targets: [localhost]
+        labels: {job: openhab, __path__: /var/log/openhab/*.log}
+
+  - job_name: syslog
+    static_configs:
+      - targets: [localhost]
+        labels: {job: syslog, __path__: /var/log/syslog}

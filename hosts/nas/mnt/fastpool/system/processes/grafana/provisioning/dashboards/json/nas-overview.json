@@ -1,0 +1,273 @@
+{
+  "title": "NAS Overview",
+  "uid": "nas-overview",
+  "schemaVersion": 39,
+  "version": 5,
+  "editable": true,
+  "tags": ["nas", "truenas", "zfs", "docker", "nfs"],
+  "timezone": "",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    { "id": 100, "type": "row", "title": "TrueNAS Host", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 1, "title": "Load (1m)", "type": "stat", "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "node_load1{job=\"node\"}", "instant": true, "refId": "A" }] },
+    { "id": 2, "title": "Load (5m)", "type": "stat", "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "node_load5{job=\"node\"}", "instant": true, "refId": "A" }] },
+    { "id": 3, "title": "Load (15m)", "type": "stat", "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "node_load15{job=\"node\"}", "instant": true, "refId": "A" }] },
+    { "id": 4, "title": "Memory Used %", "type": "stat", "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node\"} / node_memory_MemTotal_bytes{job=\"node\"})", "instant": true, "refId": "A" }] },
+    { "id": 5, "title": "CPU Temp", "description": "Max reading across the platform_coretemp sensor (CPU package/cores). Excludes NVMe and disk-backplane sensors, which have their own panels in the Disks/SMART section.",
+      "type": "stat", "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "celsius", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 85 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "max(node_hwmon_temp_celsius{job=\"node\", chip=\"platform_coretemp_0\"})", "instant": true, "refId": "A" }] },
+    { "id": 6, "title": "Uptime", "type": "stat", "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "dtdhms", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "time() - node_boot_time_seconds{job=\"node\"}", "instant": true, "refId": "A" }] },
+    { "id": 7, "title": "Physical NIC Throughput (bits/sec)", "description": "Assumes eno*/eth0 are the real physical uplinks - excludes docker0, the per-stack br-* bridges (one per docker-compose project), and br0. Adjust the device filter if that assumption is wrong for this box's actual NIC layout.",
+      "type": "timeseries", "gridPos": { "x": 0, "y": 5, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } }, "overrides": [] },
+      "targets": [
+        { "expr": "rate(node_network_receive_bytes_total{job=\"node\", device=~\"eno.*|eth0\"}[$__rate_interval]) * 8", "legendFormat": "{{device}} in", "refId": "A" },
+        { "expr": "rate(node_network_transmit_bytes_total{job=\"node\", device=~\"eno.*|eth0\"}[$__rate_interval]) * 8", "legendFormat": "{{device}} out", "refId": "B" }
+      ] },
+
+    { "id": 101, "type": "row", "title": "ZFS", "gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 8, "title": "Pool Capacity & Health", "description": "From zpool-metrics.sh's textfile-collector output - see PoolSpaceLow/PoolSpaceCritical/PoolDegraded alert rules for the thresholds these colors match.",
+      "type": "table", "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Capacity %" }, "properties": [{ "id": "unit", "value": "percent" }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 85 }, { "color": "red", "value": 95 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "Health" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "1": { "text": "ONLINE", "color": "green" }, "0": { "text": "NOT ONLINE", "color": "red" } } }] }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Capacity %", "desc": true }] },
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "pool", "mode": "outer" } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "__name__": true, "__name__1": true }, "renameByName": { "Value #A": "Capacity %", "Value #B": "Health" } } }
+      ],
+      "targets": [
+        { "expr": "zpool_capacity_percent", "instant": true, "format": "table", "refId": "A" },
+        { "expr": "zpool_health", "instant": true, "format": "table", "refId": "B" }
+      ] },
+    { "id": 9, "title": "ARC Hit Ratio", "description": "Lifetime ratio (resets on reboot) - the standard way ZFS ARC hit ratio is presented, since a short-window rate is noisy at low request volume.",
+      "type": "stat", "gridPos": { "x": 0, "y": 22, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 90 }, { "color": "green", "value": 98 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "100 * node_zfs_arc_hits{job=\"node\"} / (node_zfs_arc_hits{job=\"node\"} + node_zfs_arc_misses{job=\"node\"})", "instant": true, "refId": "A" }] },
+    { "id": 10, "title": "ARC Size Used % of Max", "type": "stat", "gridPos": { "x": 8, "y": 22, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "100 * node_zfs_arc_size{job=\"node\"} / node_zfs_arc_c_max{job=\"node\"}", "instant": true, "refId": "A" }] },
+    { "id": 11, "title": "ARC Target Size", "description": "ZFS's own adaptive target (arc_c) - grows/shrinks with memory pressure from other processes.",
+      "type": "stat", "gridPos": { "x": 16, "y": 22, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "decbytes", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "node_zfs_arc_c{job=\"node\"}", "instant": true, "refId": "A" }] },
+    { "id": 12, "title": "ARC Hits / Misses", "type": "timeseries", "gridPos": { "x": 0, "y": 26, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 1 } }, "overrides": [] },
+      "targets": [
+        { "expr": "rate(node_zfs_arc_hits{job=\"node\"}[$__rate_interval])", "legendFormat": "Hits/s", "refId": "A" },
+        { "expr": "rate(node_zfs_arc_misses{job=\"node\"}[$__rate_interval])", "legendFormat": "Misses/s", "refId": "B" }
+      ] },
+
+    { "id": 102, "type": "row", "title": "Disks / SMART", "gridPos": { "x": 0, "y": 34, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 13, "title": "SMART Status", "description": "smartctl_device_smart_status is the overall pass/fail health assessment - see DiskSmartFailure/DiskTemperatureHigh alert rules.",
+      "type": "table", "gridPos": { "x": 0, "y": 35, "w": 24, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Status" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "1": { "text": "Passed", "color": "green" }, "0": { "text": "FAILED", "color": "red" } } }] }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "Temp (°C)" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 45 }, { "color": "red", "value": 55 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "Power On" }, "properties": [{ "id": "unit", "value": "dtdhms" }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Temp (°C)", "desc": true }] },
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "device", "mode": "outer" } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "__name__": true, "__name__1": true, "__name__2": true }, "renameByName": { "Value #A": "Status", "Value #B": "Temp (°C)", "Value #C": "Power On" } } }
+      ],
+      "targets": [
+        { "expr": "smartctl_device_smart_status", "instant": true, "format": "table", "refId": "A" },
+        { "expr": "smartctl_device_temperature{temperature_type=\"current\"}", "instant": true, "format": "table", "refId": "B" },
+        { "expr": "smartctl_device_power_on_seconds", "instant": true, "format": "table", "refId": "C" }
+      ] },
+    { "id": 14, "title": "Disk I/O", "description": "Physical disks only (nvme*n1, sd[a-f]) - excludes the Pi's mmcblk0 (a different job scraped by the same metric name) and zd* ZFS zvols (a virtual layer on top of these same physical disks, would double-count).",
+      "type": "timeseries", "gridPos": { "x": 0, "y": 44, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } }, "overrides": [] },
+      "targets": [
+        { "expr": "rate(node_disk_read_bytes_total{job=\"node\", device=~\"nvme.*n1|sd[a-f]\"}[$__rate_interval])", "legendFormat": "{{device}} read", "refId": "A" },
+        { "expr": "rate(node_disk_written_bytes_total{job=\"node\", device=~\"nvme.*n1|sd[a-f]\"}[$__rate_interval])", "legendFormat": "{{device}} write", "refId": "B" }
+      ] },
+
+    { "id": 103, "type": "row", "title": "Docker", "gridPos": { "x": 0, "y": 52, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 15, "title": "Running Containers", "type": "stat", "gridPos": { "x": 0, "y": 53, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "count(container_last_seen{name!=\"\"})", "instant": true, "refId": "A" }] },
+    { "id": 16, "title": "Memory Reserved %", "description": "Sum of container memory limits (only containers with a limit set) as a share of total host memory. High values mean limits are overcommitted relative to physical RAM, not that it's actually in use - see Memory Actual Usage % for that.",
+      "type": "stat", "gridPos": { "x": 4, "y": 53, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 150 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "100 * sum(container_spec_memory_limit_bytes{name!=\"\"} > 0) / scalar(machine_memory_bytes)", "instant": true, "refId": "A" }] },
+    { "id": 17, "title": "Memory Actual Usage %", "type": "stat", "gridPos": { "x": 8, "y": 53, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "100 * sum(container_memory_working_set_bytes{name!=\"\"}) / scalar(machine_memory_bytes)", "instant": true, "refId": "A" }] },
+    { "id": 18, "title": "CPU Throttled Periods/s", "type": "stat", "gridPos": { "x": 12, "y": 53, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "sum(rate(container_cpu_cfs_throttled_periods_total{name!=\"\"}[$__rate_interval]))", "instant": true, "refId": "A" }] },
+    { "id": 19, "title": "OOM Kills (lifetime)", "type": "stat", "gridPos": { "x": 16, "y": 53, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "sum(container_oom_events_total{name!=\"\"})", "instant": true, "refId": "A" }] },
+    { "id": 20, "title": "Restarting (15m)", "description": "Containers with at least one restart in the last 15 minutes - see the ContainerCrashLooping alert rule (fires at >2 in the same window).",
+      "type": "stat", "gridPos": { "x": 20, "y": 53, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "count(changes(container_start_time_seconds{name!=\"\"}[15m]) > 0) or vector(0)", "instant": true, "refId": "A" }] },
+    { "id": 21, "title": "Docker Disk I/O", "type": "timeseries", "gridPos": { "x": 0, "y": 57, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(container_fs_reads_bytes_total{name!=\"\"}[$__rate_interval]))", "legendFormat": "Read", "refId": "A" },
+        { "expr": "sum(rate(container_fs_writes_bytes_total{name!=\"\"}[$__rate_interval]))", "legendFormat": "Write", "refId": "B" }
+      ] },
+
+    { "id": 104, "type": "row", "title": "File Sharing (NFS)", "description": "SMB/CIFS isn't observable here - no samba_exporter is deployed and node_exporter has no built-in Samba collector. Only the kernel NFS server is visible (node_exporter's nfsd collector).", "gridPos": { "x": 0, "y": 65, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 22, "title": "NFS Requests/s", "type": "stat", "gridPos": { "x": 0, "y": 66, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "sum(rate(node_nfsd_requests_total{job=\"node\"}[$__rate_interval]))", "instant": true, "refId": "A" }] },
+    { "id": 23, "title": "NFS RPC Errors/s", "type": "stat", "gridPos": { "x": 6, "y": 66, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.1 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "sum(rate(node_nfsd_rpc_errors_total{job=\"node\"}[$__rate_interval]))", "instant": true, "refId": "A" }] },
+    { "id": 24, "title": "NFS Server Threads", "type": "stat", "gridPos": { "x": 12, "y": 66, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "node_nfsd_server_threads{job=\"node\"}", "instant": true, "refId": "A" }] },
+    { "id": 25, "title": "Stale File Handles (lifetime)", "type": "stat", "gridPos": { "x": 18, "y": 66, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "node_nfsd_file_handles_stale_total{job=\"node\"}", "instant": true, "refId": "A" }] },
+    { "id": 26, "title": "NFS Disk I/O", "type": "timeseries", "gridPos": { "x": 0, "y": 70, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } }, "overrides": [] },
+      "targets": [
+        { "expr": "rate(node_nfsd_disk_bytes_read_total{job=\"node\"}[$__rate_interval])", "legendFormat": "Read", "refId": "A" },
+        { "expr": "rate(node_nfsd_disk_bytes_written_total{job=\"node\"}[$__rate_interval])", "legendFormat": "Write", "refId": "B" }
+      ] },
+
+    { "id": 105, "type": "row", "title": "Scheduled Jobs", "description": "Jobs wrapped with cron-wrapper.sh (hosts/nas/mnt/fastpool/system/scripts/) - only zpool-metrics is wrapped so far. Wrap additional TrueNAS Cron Jobs the same way to add them here automatically. Snapshot/Cloud Sync tables below are TrueNAS's own middleware-scheduled tasks (via midclt, not cron) - see SCHEDULED-TASKS-MONITORING.md.", "gridPos": { "x": 0, "y": 78, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 27, "title": "Cron Jobs", "description": "See CronJobStale/CronJobFailed alert rules. Note: cron-wrapper.sh's own label is called 'job', which collides with Prometheus's scrape-config label of the same name (job=\"node\", identical for every textfile-collector metric) - Prometheus's default collision handling renames the metric's own label to 'exported_job', which is the real per-task identity and what this table actually joins/displays on.",
+      "type": "table", "gridPos": { "x": 0, "y": 79, "w": 24, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "exported_job" }, "properties": [{ "id": "displayName", "value": "Job" }] },
+          { "matcher": { "id": "byName", "options": "Last Run" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] },
+          { "matcher": { "id": "byName", "options": "Last Success" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] },
+          { "matcher": { "id": "byName", "options": "Exit Code" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "Duration (s)" }, "properties": [{ "id": "unit", "value": "s" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "exported_job", "mode": "outer" } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "__name__": true, "__name__1": true, "__name__2": true, "__name__3": true }, "renameByName": { "Value #A": "Last Run", "Value #B": "Last Success", "Value #C": "Exit Code", "Value #D": "Duration (s)" } } }
+      ],
+      "targets": [
+        { "expr": "cron_job_last_run_timestamp_seconds * 1000", "instant": true, "format": "table", "refId": "A" },
+        { "expr": "cron_job_last_success_timestamp_seconds * 1000", "instant": true, "format": "table", "refId": "B" },
+        { "expr": "cron_job_last_exit_code", "instant": true, "format": "table", "refId": "C" },
+        { "expr": "cron_job_last_run_duration_seconds", "instant": true, "format": "table", "refId": "D" }
+      ] },
+    { "id": 28, "title": "Periodic Snapshot Tasks", "description": "See SnapshotTaskFailed alert rule. A disabled task always shows Enabled=No with no state - that's expected, not a failure.",
+      "type": "table", "gridPos": { "x": 0, "y": 88, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "dataset" }, "properties": [{ "id": "displayName", "value": "Dataset" }] },
+          { "matcher": { "id": "byName", "options": "state" }, "properties": [{ "id": "displayName", "value": "State" }, { "id": "mappings", "value": [{ "type": "value", "options": { "FINISHED": { "text": "FINISHED", "color": "green" }, "PENDING": { "text": "PENDING", "color": "text" } } }] }] },
+          { "matcher": { "id": "byName", "options": "Enabled" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "1": { "text": "Yes", "color": "green" }, "0": { "text": "No", "color": "text" } } }] }] },
+          { "matcher": { "id": "byName", "options": "Success" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "Last Run" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "dataset", "mode": "outer" } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "Value #B": true, "__name__": true, "__name__1": true, "__name__2": true, "__name__3": true }, "renameByName": { "Value #A": "Enabled", "Value #C": "Success", "Value #D": "Last Run" } } }
+      ],
+      "targets": [
+        { "expr": "snapshot_task_enabled", "instant": true, "format": "table", "refId": "A" },
+        { "expr": "snapshot_task_state_info", "instant": true, "format": "table", "refId": "B" },
+        { "expr": "snapshot_task_last_success", "instant": true, "format": "table", "refId": "C" },
+        { "expr": "snapshot_task_last_run_timestamp_seconds * 1000", "instant": true, "format": "table", "refId": "D" }
+      ] },
+    { "id": 29, "title": "Cloud Sync Tasks", "description": "See CloudSyncTaskFailed alert rule.",
+      "type": "table", "gridPos": { "x": 0, "y": 96, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "task" }, "properties": [{ "id": "displayName", "value": "Task" }] },
+          { "matcher": { "id": "byName", "options": "state" }, "properties": [{ "id": "displayName", "value": "State" }, { "id": "mappings", "value": [{ "type": "value", "options": { "SUCCESS": { "text": "SUCCESS", "color": "green" }, "NEVER_RUN": { "text": "NEVER_RUN", "color": "text" } } }] }] },
+          { "matcher": { "id": "byName", "options": "Enabled" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "1": { "text": "Yes", "color": "green" }, "0": { "text": "No", "color": "text" } } }] }] },
+          { "matcher": { "id": "byName", "options": "Success" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "Last Run" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "task", "mode": "outer" } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "Value #B": true, "__name__": true, "__name__1": true, "__name__2": true, "__name__3": true }, "renameByName": { "Value #A": "Enabled", "Value #C": "Success", "Value #D": "Last Run" } } }
+      ],
+      "targets": [
+        { "expr": "cloudsync_task_enabled", "instant": true, "format": "table", "refId": "A" },
+        { "expr": "cloudsync_task_state_info", "instant": true, "format": "table", "refId": "B" },
+        { "expr": "cloudsync_task_last_success", "instant": true, "format": "table", "refId": "C" },
+        { "expr": "cloudsync_task_last_run_timestamp_seconds * 1000", "instant": true, "format": "table", "refId": "D" }
+      ] }
+  ]
+}

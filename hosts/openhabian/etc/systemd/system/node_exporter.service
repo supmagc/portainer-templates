@@ -1,0 +1,20 @@
+[Unit]
+Description=Prometheus Node Exporter
+After=network.target
+
+[Service]
+# --collector.systemd is off by default in node_exporter (enumerating every
+# unit is wasteful) - scoped here to just the backup timers/services
+# openhabian-config creates (see docs/openhabian-backup.md and
+# functions/backup.bash in openhab/openhabian: amdump-<config>.timer/.service
+# for the data backup, amandaBackupDB for Amanda's own DB, sdrawcopy/sdrsync
+# for SD-card mirroring). The exact <config> name depends on what was picked
+# during setup - run `systemctl list-timers` on the Pi to confirm the real
+# unit names match this filter before relying on it; widen/narrow the regex
+# below if not.
+ExecStart=/usr/local/bin/node_exporter --collector.systemd --collector.systemd.unit-include=^(amdump-.*|amandaBackupDB|sdrawcopy|sdrsync)\.(service|timer)$
+Restart=on-failure
+User=nobody
+
+[Install]
+WantedBy=multi-user.target

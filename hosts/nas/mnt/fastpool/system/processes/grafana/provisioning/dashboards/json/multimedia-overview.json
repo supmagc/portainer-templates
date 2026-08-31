@@ -2,7 +2,7 @@
   "title": "Multimedia Overview",
   "uid": "multimedia-overview",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "tags": ["multimedia", "arr", "emby", "downloads"],
   "timezone": "",
@@ -303,6 +303,18 @@
         { "expr": "8 * rate(qbittorrent_dl_info_data[$__rate_interval])", "legendFormat": "qBittorrent down", "refId": "A" },
         { "expr": "8 * rate(qbittorrent_up_info_data[$__rate_interval])", "legendFormat": "qBittorrent up", "refId": "B" },
         { "expr": "8 * sabnzbd_queue_download_rate_bytes_per_second", "legendFormat": "SABnzbd down", "refId": "C" }
-      ] }
+      ] },
+
+    { "id": 108, "type": "row", "title": "Seerr", "description": "Reachability only - Seerr has no native Prometheus metrics, and the one community exporter for this API family (opspotes/jellyseerr-exporter) targets the pre-merge Jellyseerr and its Seerr-compatibility isn't confirmed, so it wasn't deployed speculatively. Ask if you want it tried anyway.", "gridPos": { "x": 0, "y": 69, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 51, "title": "Status", "type": "stat", "gridPos": { "x": 0, "y": 70, "w": 12, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "1": { "text": "Up", "color": "green" }, "0": { "text": "Down", "color": "red" } } }], "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "probe_success{instance=\"http://seerr:5055/api/v1/status\"}", "instant": true, "refId": "A" }] },
+    { "id": 52, "title": "Response Time", "type": "stat", "gridPos": { "x": 12, "y": 70, "w": 12, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "probe_duration_seconds{instance=\"http://seerr:5055/api/v1/status\"}", "instant": true, "refId": "A" }] }
   ]
 }

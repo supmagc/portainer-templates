@@ -231,7 +231,7 @@ groups:
           description: "Blackbox probe against {{ $labels.instance }} (job={{ $labels.job }}) has been failing for 3+ minutes."
 
       # Real ZFS pool capacity, sourced from a node-exporter textfile-collector
-      # metric (zpool_capacity_percent) - see scratchpad/host-configs/node-exporter/
+      # metric (zpool_capacity_percent) - see hosts/nas/mnt/fastpool/system/scripts/
       # zpool-metrics.sh. node_filesystem_* can't be used for this: ZFS datasets
       # share the pool's free space, so a dataset with little of its own data
       # always reports near-100% free regardless of how full the pool actually is.
@@ -456,3 +456,202 @@ groups:
         annotations:
           summary: "Pool {{ $labels.pool }} is not ONLINE"
           description: "ZFS pool {{ $labels.pool }} is DEGRADED/FAULTED/OFFLINE/UNAVAIL/REMOVED - check `zpool status {{ $labels.pool }}` now."
+
+      # cron_job_last_run_timestamp_seconds comes from cron-wrapper.sh (see
+      # hosts/nas/mnt/fastpool/system/scripts/) - a job that stops running
+      # entirely (cron disabled, script deleted, host down) wouldn't otherwise
+      # be noticed, since there's no error to trigger on.
+      #
+      # NOTE: annotations below use $labels.exported_job, not $labels.job -
+      # cron-wrapper.sh's own label is called "job", which collides with
+      # Prometheus's scrape-config label of the same name (job="node" for
+      # every textfile-collector metric); Prometheus's default collision
+      # handling renames the metric's own label to "exported_job", which is
+      # the real per-task identity.
+      #
+      # NOTE: 30m assumes every wrapped job runs at least every 5-10m (matches
+      # zpool-metrics.sh today, the only job wrapped so far). If a job with a
+      # longer schedule (e.g. daily) gets wrapped later, split it into its own
+      # rule with a threshold matching its own schedule instead of raising
+      # this one - a single global threshold stops making sense once jobs
+      # have different cadences.
+      - uid: cron-job-stale
+        title: CronJobStale
+        condition: C
+        for: 5m
+        noDataState: OK   # see PoolSpaceLow above - TargetDown already watches node-exporter itself
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: time() - cron_job_last_run_timestamp_seconds
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [1800]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cron job {{ $labels.exported_job }} hasn't run in 30+ minutes"
+          description: "cron-wrapper.sh last recorded a run of {{ $labels.exported_job }} {{ $values.B.Value }}s ago - check the TrueNAS Cron Jobs task and that it's still enabled."
+
+      - uid: cron-job-failed
+        title: CronJobFailed
+        condition: C
+        for: 0m
+        noDataState: OK   # see CronJobStale above
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: cron_job_last_exit_code
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cron job {{ $labels.exported_job }} failed"
+          description: "cron-wrapper.sh recorded exit code {{ $values.B.Value }} for {{ $labels.exported_job }}'s last run."
+
+      # snapshot_task_last_success/enabled come from snapshot-tasks-metrics.sh
+      # (see hosts/nas/mnt/fastpool/system/scripts/) - the `and` join on the
+      # shared `dataset` label means this query returns ONLY tasks that are
+      # both enabled and not currently in a FINISHED state, so a disabled task
+      # (last_success also reads 0, since it never runs) never shows up here.
+      - uid: snapshot-task-failed
+        title: SnapshotTaskFailed
+        condition: C
+        for: 0m
+        noDataState: OK   # no rows = nothing enabled is currently failing
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 1200, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: snapshot_task_last_success == 0 and snapshot_task_enabled == 1
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Snapshot task for {{ $labels.dataset }} isn't finishing"
+          description: "Periodic Snapshot Task for {{ $labels.dataset }} is enabled but its last run didn't reach FINISHED - check snapshot_task_state_info{{ '{' }}dataset=\"{{ $labels.dataset }}\"{{ '}' }} for the actual state, and `zpool status`/TrueNAS's Data Protection page."
+
+      - uid: cloudsync-task-failed
+        title: CloudSyncTaskFailed
+        condition: C
+        for: 0m
+        noDataState: OK   # see SnapshotTaskFailed above
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 1200, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: cloudsync_task_last_success == 0 and cloudsync_task_enabled == 1
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cloud sync task {{ $labels.task }} isn't succeeding"
+          description: "Cloud Sync Task \"{{ $labels.task }}\" is enabled but its last run didn't report SUCCESS - check cloudsync_task_state_info{{ '{' }}task=\"{{ $labels.task }}\"{{ '}' }} for the actual state, and its job log on TrueNAS's Data Protection page."
