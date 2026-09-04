@@ -1,0 +1,22 @@
+modules:
+  http_2xx:
+    prober: http
+    http:
+      valid_status_codes: [200, 204, 401]   # 401 = "reachable" for token-secured endpoints (e.g. OpenHAB REST); 204 = InfluxDB 1.x /ping. Setting this list at all disables blackbox's default "any 2xx" acceptance, so every success code these targets return must be listed explicitly.
+      preferred_ip_protocol: ip4       # Docker hands out AAAA records too; several targets (e.g. rabbitmq) only bind IPv4
+      ip_protocol_fallback: false
+  http_2xx_insecure:
+    prober: http
+    http:
+      valid_status_codes: [200, 204, 401]   # shared with the openHABian subdomains below (401 = OpenHAB REST, 204 = InfluxDB 1.x /ping) - see http_2xx's comment
+      tls_config:
+        insecure_skip_verify: true   # step-ca's self-issued chain - also covers grafana./influx.openhabian.bellecerise.local, whose certs chain to the same root
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+  http_2xx_noredirect:
+    prober: http
+    http:
+      valid_status_codes: [200, 301, 302, 401]
+      no_follow_redirects: true   # nextcloud-web force-redirects to https, which it doesn't listen on internally (Traefik terminates TLS at the edge only) - a redirect response still proves the app is up
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false

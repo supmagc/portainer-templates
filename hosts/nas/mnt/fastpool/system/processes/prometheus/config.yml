@@ -115,11 +115,6 @@ scrape_configs:
     static_configs:
       - targets:
           - http://openhabian.bellecerise.local:8080/rest
-          # openHABian's own local Grafana+InfluxDB (separate from this stack's
-          # Grafana/Prometheus entirely) - /api/health and /ping are both real
-          # 2xx health endpoints (Grafana returns 200 JSON, InfluxDB 1.x's
-          # /ping returns 204 which still counts as 2xx), so http_2xx works
-          # unmodified for both, no custom module needed.
           - http://openhabian.bellecerise.local:3000/api/health
           - http://openhabian.bellecerise.local:8086/ping
     relabel_configs:
@@ -127,12 +122,19 @@ scrape_configs:
       - {source_labels: [__param_target], target_label: instance}
       - {target_label: __address__, replacement: blackbox-exporter:9115}
 
-  # openHABian's local Grafana instance's own native /metrics (always exposed
-  # unauthenticated, standard for any Grafana) - separate from this repo's own
-  # Grafana entirely, just its Go runtime/process health (goroutines, memory,
-  # uptime). No equivalent exists for the Pi's InfluxDB 1.x (no native
-  # Prometheus endpoint until 2.x) - blackbox's /ping probe above is as deep
-  # as that one gets without deploying something extra.
+  - job_name: blackbox-openhabian-proxy
+    metrics_path: /probe
+    params: {module: [http_2xx_insecure]}
+    static_configs:
+      - targets:
+          - https://openhabian.bellecerise.local/rest
+          - https://grafana.openhabian.bellecerise.local/api/health
+          - https://influx.openhabian.bellecerise.local/ping
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: blackbox-exporter:9115}
+
   - job_name: openhabian-grafana
     scrape_interval: 60s
     static_configs: [{targets: ["openhabian.bellecerise.local:3000"]}]

@@ -1,0 +1,62 @@
+# The Caddyfile is an easy way to configure your Caddy web server.
+#
+# Unless the file starts with a global options block, the first
+# uncommented line is always the address of your site.
+#
+# To use your own domain name (with automatic HTTPS), first make
+# sure your domain's A/AAAA DNS records are properly pointed to
+# this machine's public IP, then replace ":80" below with your
+# domain name.
+
+#:80 {
+        # Set this path to your site's directory.
+#       root * /usr/share/caddy
+
+        # Enable the static file server.
+#       file_server
+
+        # Another common task is to set up a reverse proxy:
+        # reverse_proxy localhost:8080
+
+        # Or serve a PHP site through php-fpm:
+        # php_fastcgi localhost:9000
+#}
+
+# Refer to the Caddy docs for more information:
+# https://caddyserver.com/docs/caddyfile
+
+# All three site blocks share ONE cert: /etc/caddy/certs/openhab.{crt,key},
+# issued by acme.sh (HTTP-01, --standalone) against the NAS step-ca and renewed
+# nightly by /home/openhabian/acme-renew.sh. Its SAN set must list every name
+# used below - openhabian.bellecerise.local, openhabian, 192.168.1.154,
+# grafana.openhabian.bellecerise.local, influx.openhabian.bellecerise.local.
+# The subdomains resolve via the OpenWrt dnsmasq line
+# `address=/openhabian.bellecerise.local/192.168.1.154`, which also covers every
+# future *.openhabian.bellecerise.local sub-label.
+
+openhabian.bellecerise.local, openhabian, 192.168.1.154 {
+    tls /etc/caddy/certs/openhab.crt /etc/caddy/certs/openhab.key
+
+    handle /.well-known/acme-challenge/* {
+        root * /var/www/acme-challenge
+        file_server
+    }
+    handle {
+        reverse_proxy localhost:8080
+    }
+}
+
+# openHABian's bundled Grafana. Needs matching root_url/domain in
+# /etc/grafana/grafana.ini so its own redirects and share-links are correct.
+grafana.openhabian.bellecerise.local {
+    tls /etc/caddy/certs/openhab.crt /etc/caddy/certs/openhab.key
+    reverse_proxy localhost:3000
+}
+
+# openHABian's bundled InfluxDB 1.x. NOTE: its HTTP API (/query, /write) is
+# unauthenticated on a stock openHABian install - this block exposes it to
+# anything that can reach the Pi on 443.
+influx.openhabian.bellecerise.local {
+    tls /etc/caddy/certs/openhab.crt /etc/caddy/certs/openhab.key
+    reverse_proxy localhost:8086
+}

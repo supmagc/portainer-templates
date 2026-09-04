@@ -74,7 +74,7 @@
       },
       "options": { "showHeader": true },
       "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true }, "renameByName": { "Value": "Last Triggered" } } }],
-      "targets": [{ "expr": "node_systemd_timer_last_trigger_seconds{job=\"openhabian\", name=~\"(amdump-.*|amandaBackupDB|sdrawcopy|sdrsync)\\.timer\"} * 1000", "instant": true, "format": "table", "refId": "A" }] },
+      "targets": [{ "expr": "node_systemd_timer_last_trigger_seconds{job=\"openhabian\", name=~\"(amdump-.*|amandaBackupDB|sdrawcopy|sdrsync)[.]timer\"} * 1000", "instant": true, "format": "table", "refId": "A" }] },
     { "id": 11, "title": "Backup Services - Current State", "type": "table", "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
@@ -86,7 +86,7 @@
       },
       "options": { "showHeader": true },
       "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "Value": true } } }],
-      "targets": [{ "expr": "node_systemd_unit_state{job=\"openhabian\", name=~\"(amdump-.*|amandaBackupDB|sdrawcopy|sdrsync)\\.service\"} == 1", "instant": true, "format": "table", "refId": "A" }] },
+      "targets": [{ "expr": "node_systemd_unit_state{job=\"openhabian\", name=~\"(amdump-.*|amandaBackupDB|sdrawcopy|sdrsync)[.]service\"} == 1", "instant": true, "format": "table", "refId": "A" }] },
 
     { "id": 103, "type": "row", "title": "Grafana (local)", "description": "openHABian's own local Grafana instance, separate from this stack's Grafana entirely - its own native /metrics endpoint, always exposed unauthenticated by any Grafana. Go-runtime health only (no dashboard/alerting-specific metrics assumed, to avoid guessing at grafana_* metric names this session couldn't verify live against this second instance).", "gridPos": { "x": 0, "y": 32, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
     { "id": 12, "title": "Status", "type": "stat", "gridPos": { "x": 0, "y": 33, "w": 6, "h": 4 },

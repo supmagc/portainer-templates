@@ -58,8 +58,10 @@ Currently tracked:
   `snapshot-tasks-metrics.sh`, `cloudsync-tasks-metrics.sh`) that expose TrueNAS-native
   state (ZFS pools, SMART, cron jobs, periodic snapshot/cloud-sync tasks) as node-exporter
   textfile-collector metrics.
-- **`openhabian`** — a native (non-Docker) Raspberry Pi install running openHAB. Tracked
-  files are `node_exporter`/`promtail` systemd units and Promtail's scrape config.
+- **`openhabian`** — a native (non-Docker) Raspberry Pi install (`192.168.1.154`) running
+  openHAB. Tracked files are `node_exporter`/`promtail` systemd units, Promtail's scrape
+  config, and the Caddy `Caddyfile` (reverse-proxies openHAB plus `grafana.` / `influx.`
+  subdomains — see [CONTEXT.md](docs/CONTEXT.md) for the step-ca/acme.sh cert setup).
 
 Deploy with:
 ```powershell

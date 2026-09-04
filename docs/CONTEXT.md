@@ -99,6 +99,64 @@ openHABian also bundles a local Grafana (port 3000, native `/metrics`) and Influ
 covered by blackbox reachability probes only (Grafana `/api/health`, InfluxDB `/ping`),
 not scraped for internal metrics.
 
+The Pi's address is **`192.168.1.154`** (on `lan`, same subnet as the NAS). The
+`# fill in actual Pi address` TODOs still in `prometheus/config.yml` for the `openhabian`
+node/blackbox jobs can be closed with that — they currently use the
+`openhabian.bellecerise.local` name, which resolves fine, so it's cosmetic.
+
+**InfluxDB `/ping` returns HTTP 204**, and the shared `http_2xx` blackbox module sets an
+explicit `valid_status_codes` list (originally `[200, 401]` — 401 for token-secured
+OpenHAB REST). An explicit list *disables* blackbox's default "any 2xx" acceptance, so
+204 was being treated as a failure and the `blackbox-openhabian` probe for `:8086/ping`
+alerted constantly. Fixed by adding `204` to that list (`[200, 204, 401]` in
+`blackbox/config.yml`). The `blackbox/config.yml` was also graduated from `scratchpad/`
+to `hosts/nas/.../blackbox/config.yml` at the same time (no secrets in it).
+
+### openHABian reverse proxy (Caddy) + its cert
+
+The Pi runs **Caddy** (not Docker, not Traefik — Traefik only fronts the NAS stack),
+config tracked at `hosts/openhabian/etc/caddy/Caddyfile`. As of this session it serves
+three vhosts, all sharing one cert:
+
+- `openhabian.bellecerise.local` (+ `openhabian`, `192.168.1.154`) → openHAB on `:8080`
+- `grafana.openhabian.bellecerise.local` → the bundled Grafana on `:3000`
+- `influx.openhabian.bellecerise.local` → the bundled InfluxDB 1.x on `:8086`
+
+The subdomains resolve via a single OpenWrt dnsmasq line
+`address=/openhabian.bellecerise.local/192.168.1.154`, which matches the parent name and
+**every sub-label** of it, so new `*.openhabian.bellecerise.local` names need no further
+DNS edits. Grafana additionally needs `[server] domain` / `root_url` set to its subdomain
+in `/etc/grafana/grafana.ini`. InfluxDB's HTTP API is unauthenticated on a stock
+openHABian install — the `influx.` vhost exposes it to anything that reaches the Pi on
+443; add auth in Caddy if that matters.
+
+**The cert** (`/etc/caddy/certs/openhab.{crt,key}`) is issued by `acme.sh` via **HTTP-01,
+`--standalone`** against the NAS step-ca's ACME directory
+(`https://step-ca.networking.bellecerise.local:8999/acme/acme/directory`), renewed nightly
+by `/home/openhabian/acme-renew.sh` (root cron, `0 3 * * *`). Hard-won details:
+
+- The script **stops Caddy** for the run so acme.sh's standalone server can bind `:80`;
+  step-ca then connects back to `http://<name>:80/.well-known/acme-challenge/...` for
+  each identifier. If Caddy isn't actually stopped (e.g. an interactive run that fails a
+  polkit prompt), validation fails with
+  `urn:ietf:params:acme:error:connection "could not connect to validation target"` and
+  the order sits `pending` until it times out.
+- step-ca **does** issue for the bare `openhabian` short-name and the `192.168.1.154` IP
+  identifier — both validate over HTTP-01 the same way (confirmed this session).
+- `acme.sh --cron` renews against each cert's **recorded** SAN set; a plain
+  `acme.sh --issue -d ... -d ...` is what *changes* that set. So after editing the domain
+  list you must run one explicit `--issue` (the script's `--force` flag does exactly
+  this) before `--cron` will carry the new names forward.
+- `acme.sh --cron`/`--renew` auto-run the saved deploy hook (copy fullchain+key to
+  `/etc/caddy/certs/`, `chown caddy:caddy`, `systemctl reload-or-restart caddy`); a plain
+  `--issue` does **not** — the reworked script calls `--install-cert` explicitly after a
+  forced issue to cover that path.
+- **Don't run `sudo acme.sh ...` directly** — acme.sh's sudo guard aborts before doing
+  anything. Invoke it *from* the script (its `SUDO_COMMAND` is then the script, not
+  acme.sh) or from a root login shell (`sudo su -`).
+- `acme-renew.sh` logs to `/var/log/acme-renew.log` with a `logrotate.d/acme-renew` rule
+  (monthly, keep 6, compressed).
+
 ### Other resolved investigations, briefly
 
 - **Router traffic panel "triple-counting"**: `network-details.json` was summing
