@@ -62,6 +62,10 @@ Currently tracked:
   openHAB. Tracked files are `node_exporter`/`promtail` systemd units, Promtail's scrape
   config, and the Caddy `Caddyfile` (reverse-proxies openHAB plus `grafana.` / `influx.`
   subdomains — see [CONTEXT.md](docs/CONTEXT.md) for the step-ca/acme.sh cert setup).
+  Promtail tails the openHAB core / `events.log` / HabApp logs plus the systemd journal
+  and **dual-ships** them to the central Loki *and* a second Loki running locally on the
+  Pi (feeds the bundled Grafana's log views) — see
+  [CONTEXT.md](docs/CONTEXT.md) → "openHABian log shipping".
 
 Deploy with:
 ```powershell

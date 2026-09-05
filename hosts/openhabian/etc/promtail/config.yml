@@ -7,16 +7,73 @@ positions:
 
 clients:
   - url: https://loki.monitoring.bellecerise.local/loki/api/v1/push
+    external_labels:
+      host: openhabian
+
+  - url: http://127.0.0.1:3100/loki/api/v1/push
+    external_labels:
+      host: openhabian
 
 scrape_configs:
-  # VERIFY exact path/filename — this is openHABian's conventional log location,
-  # not independently confirmed against this specific install
   - job_name: openhab
     static_configs:
       - targets: [localhost]
-        labels: {job: openhab, __path__: /var/log/openhab/*.log}
+        labels: {job: openhab, __path__: /var/log/openhab/openhab.log}
+    pipeline_stages:
+      - multiline:
+          firstline: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} '
+          max_wait_time: 3s
+      - regex:
+          expression: '^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<level>[A-Z]+)\s*\] \[(?P<logger>[^\]]+?)\s*\] - '
+      - labels:
+          level:
+      - timestamp:
+          source: ts
+          format: '2006-01-02 15:04:05.000'
+          location: Europe/Brussels
 
-  - job_name: syslog
+  - job_name: events
     static_configs:
       - targets: [localhost]
-        labels: {job: syslog, __path__: /var/log/syslog}
+        labels: {job: events, __path__: /var/log/openhab/events.log}
+    pipeline_stages:
+      - multiline:
+          firstline: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} '
+          max_wait_time: 3s
+      - regex:
+          expression: '^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<level>[A-Z]+)\s*\] \[(?P<logger>[^\]]+?)\s*\] - '
+      - labels:
+          level:
+      - timestamp:
+          source: ts
+          format: '2006-01-02 15:04:05.000'
+          location: Europe/Brussels
+
+  - job_name: habapp
+    static_configs:
+      - targets: [localhost]
+        labels: {job: habapp, __path__: /var/log/openhab/HABApp.log}
+    pipeline_stages:
+      - multiline:
+          firstline: '^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] '
+          max_wait_time: 3s
+      - regex:
+          expression: '^\[(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[\s*(?P<logger>[^\]]+)\]\s+(?P<level>[A-Z]+) \| '
+      - labels:
+          level:
+      - timestamp:
+          source: ts
+          format: '2006-01-02 15:04:05'
+          location: Europe/Brussels
+
+  - job_name: journal
+    journal:
+      path: /var/log/journal
+      max_age: 12h
+      labels:
+        job: journal
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: unit
+      - source_labels: ['__journal_priority_keyword']
+        target_label: level

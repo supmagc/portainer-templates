@@ -157,6 +157,54 @@ by `/home/openhabian/acme-renew.sh` (root cron, `0 3 * * *`). Hard-won details:
 - `acme-renew.sh` logs to `/var/log/acme-renew.log` with a `logrotate.d/acme-renew` rule
   (monthly, keep 6, compressed).
 
+### openHABian log shipping (Promtail → Loki)
+
+Promtail on the Pi (`hosts/openhabian/etc/promtail/config.yml`, static binary, systemd
+unit, runs as **root**) tails openHAB's file logs and the systemd journal and
+**dual-ships** everything to two Loki endpoints:
+
+- `https://loki.monitoring.bellecerise.local/loki/api/v1/push` — the central NAS stack,
+  through Traefik's step-ca cert. The Pi must have the **step-ca root in its system trust
+  store** (`/usr/local/share/ca-certificates/…` + `update-ca-certificates`) or the push
+  fails with `x509: certificate signed by unknown authority`. Promtail reads the system
+  store, so no `tls_config` block is needed once the root is trusted.
+- `http://127.0.0.1:3100/loki/api/v1/push` — a **second Loki running locally on the Pi**.
+  openHABian does *not* bundle Loki (only Grafana + InfluxDB 1.x); it was installed by
+  hand as a single-binary, filesystem-storage instance (`/usr/local/bin/loki`,
+  `/etc/loki/config.yml`, `loki.service`, data under `/var/lib/loki`, retention ~14d) and
+  added as a datasource to the bundled Grafana so its log panels work offline of the NAS.
+  *(These `loki.service` / `/etc/loki/config.yml` / Grafana-datasource files are not yet
+  tracked under `hosts/openhabian/`.)*
+
+Scrape jobs and the reasons they're shaped the way they are:
+
+- `openhab` (`/var/log/openhab/openhab.log`) and `events` (`/var/log/openhab/events.log`)
+  — same openHAB log4j2 format (`multiline` on the `yyyy-MM-dd HH:mm:ss.SSS` line start +
+  `regex` pulling `level`/`logger` + `timestamp`). `events.log` gets its **own `job`
+  label** (not folded into `openhab`) because it's high-volume and you'll want to
+  mute/drop it independently.
+- `habapp` (`/var/log/openhab/HABApp.log`) — HabApp's Python-logging format, which per the
+  install's `logging.yml` has **no milliseconds** and remaps `WARNING`→`WARN`; the regex
+  and `timestamp` format account for both. This file is low-volume by design — the
+  chatty `HABApp.EventBus` logger goes to `HABApp_events.log`, which is **deliberately not
+  shipped**: it rotates all 5×16 MB backups roughly every 7 minutes, and `/var/log` is on
+  size-capped zram (openHABian `zram-config`, limit in `/etc/ztab`), so shipping it would
+  blow the zram budget and swamp the Pi's Loki. HabApp is the switch away from JSR223 JS
+  rules; its file logging is what made Loki analysis viable.
+- `journal` (systemd journal via the `sd-journal` API, **not** a file). This install is
+  journald-only — there is **no `/var/log/syslog`** — so a file-based syslog job would
+  tail nothing. The journal target also sidesteps any inotify-on-overlayfs quirks since
+  it doesn't watch files at all.
+
+Because logs now land in Loki in near-real-time, Loki is the durable copy — keep the
+on-Pi `maxBytes`/`backupCount` (openHAB `log4j2.xml`, HabApp `logging.yml`) modest to
+stay inside the zram budget; losing unsynced `/var/log` on a power cut no longer loses
+data that already shipped.
+
+Note: Promtail is deprecated upstream (folded into Grafana Alloy, removed from Loki as of
+3.7.3). The standalone binary still works and matches the NAS stack's `grafana/promtail`
+— an eventual Alloy migration is the long-term path for both hosts.
+
 ### Other resolved investigations, briefly
 
 - **Router traffic panel "triple-counting"**: `network-details.json` was summing
