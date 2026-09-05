@@ -13,10 +13,18 @@ modules:
         insecure_skip_verify: true   # step-ca's self-issued chain - also covers grafana./influx.openhabian.bellecerise.local, whose certs chain to the same root
       preferred_ip_protocol: ip4
       ip_protocol_fallback: false
-  http_2xx_noredirect:
+  http_2xx_redirect:
     prober: http
     http:
       valid_status_codes: [200, 301, 302, 401]
       no_follow_redirects: true   # nextcloud-web force-redirects to https, which it doesn't listen on internally (Traefik terminates TLS at the edge only) - a redirect response still proves the app is up
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+  tls_connect:
+    prober: tcp
+    tcp:
+      tls: true
+      tls_config:
+        insecure_skip_verify: true   # self-signed / internal step-ca chains - this module only checks TCP+TLS reachability and probe_ssl_earliest_cert_expiry, not chain or hostname validity
       preferred_ip_protocol: ip4
       ip_protocol_fallback: false

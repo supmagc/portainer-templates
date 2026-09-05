@@ -612,12 +612,15 @@ groups:
           summary: "Snapshot task for {{ $labels.dataset }} isn't finishing"
           description: "Periodic Snapshot Task for {{ $labels.dataset }} is enabled but its last run didn't reach FINISHED - check snapshot_task_state_info{{ '{' }}dataset=\"{{ $labels.dataset }}\"{{ '}' }} for the actual state, and `zpool status`/TrueNAS's Data Protection page."
 
-      # probe_ssl_earliest_cert_expiry comes for free from any https:// blackbox
-      # probe. Currently only meaningful for blackbox-openhabian-proxy's three
-      # targets - their cert is renewed nightly by acme.sh against step-ca on a
-      # documented fragile path (acme.sh must successfully stop Caddy to bind
-      # :80 for the HTTP-01 challenge; see docs/CONTEXT.md) with nothing else
-      # watching for a silent renewal failure.
+      # probe_ssl_earliest_cert_expiry comes from any TLS blackbox probe -
+      # dedicated coverage is blackbox-tls-cert (tls_connect module, checks
+      # reachability + expiry only), plus it comes for free from every
+      # blackbox-https target since those are also https://. No job
+      # filter here so both count. Most load-bearing for openhabian's three
+      # subdomains - their shared cert is renewed nightly by acme.sh against
+      # step-ca on a documented fragile path (acme.sh must successfully stop
+      # Caddy to bind :80 for the HTTP-01 challenge; see docs/CONTEXT.md) with
+      # nothing else watching for a silent renewal failure.
       - uid: cert-expiring-soon
         title: CertExpiringSoon
         condition: C

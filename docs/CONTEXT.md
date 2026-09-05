@@ -172,10 +172,10 @@ by `/home/openhabian/acme-renew.sh` (root cron, `0 3 * * *`). Hard-won details:
   RabbitMQ's management listener is IPv4-only but Docker handed blackbox an AAAA record
   too (fixed with `preferred_ip_protocol: ip4`); `nextcloud-web` redirects `/` to a login
   page that a default blackbox module wouldn't follow correctly (fixed with a dedicated
-  `http_2xx_noredirect` module/job — blackbox's `params.module` is job-scoped, not
+  `http_2xx_redirect` module/job — blackbox's `params.module` is job-scoped, not
   target-scoped, which is why mixed-behavior targets need their own job repeatedly
-  throughout `prometheus.yml`, e.g. `blackbox-http` vs `blackbox-http-insecure` vs
-  `blackbox-nextcloud` vs `blackbox-openhabian`).
+  throughout `prometheus.yml`, e.g. `blackbox-http` vs `blackbox-https` vs
+  `blackbox-http-redirect` vs `blackbox-tls-cert`).
 - **SNMP (switch/APs)**: works end-to-end now. Root causes chained through: missing
   `lan`→`admin` VLAN firewall forwarding for UDP/161, then the switch itself lacking a
   default gateway (JetStream T1600G-28PS: under **L3 FEATURES → Static Routing**, not

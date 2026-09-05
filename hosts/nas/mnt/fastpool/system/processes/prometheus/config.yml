@@ -68,8 +68,12 @@ scrape_configs:
       - targets: ["exportarr-prowlarr:8081"]
         labels: {app: prowlarr}
 
-  # split into two jobs — Prometheus's blackbox `params.module` is job-scoped,
-  # not target-scoped, so mixed-module targets can't share one job.
+  # blackbox jobs are split by probe type (module) — Prometheus's blackbox
+  # `params.module` is job-scoped, not target-scoped, so mixed-module targets
+  # can't share one job. Targets are grouped here by which module they need,
+  # not by which service they belong to.
+
+  # plain HTTP, default redirect-following, no TLS involved
   - job_name: blackbox-http
     metrics_path: /probe
     params: {module: [http_2xx]}
@@ -79,17 +83,19 @@ scrape_configs:
           - http://emby:8096/emby/System/Info/Public
           - http://rabbitmq:15672/
           - http://seerr:5055/api/v1/status
+          - http://openhabian.bellecerise.local:8080/rest
+          - http://openhabian.bellecerise.local:3000/api/health
+          - http://openhabian.bellecerise.local:8086/ping
     relabel_configs:
       - {source_labels: [__address__], target_label: __param_target}
       - {source_labels: [__param_target], target_label: instance}
       - {target_label: __address__, replacement: blackbox-exporter:9115}
 
   # nextcloud-web force-redirects to https, which it doesn't serve internally
-  # (see blackbox/config.yml) — needs its own job since blackbox's `params`
-  # (module selection) is job-scoped, not target-scoped.
-  - job_name: blackbox-nextcloud
+  # (see blackbox/config.yml) — a redirect response still proves the app is up
+  - job_name: blackbox-http-redirect
     metrics_path: /probe
-    params: {module: [http_2xx_noredirect]}
+    params: {module: [http_2xx_redirect]}
     scrape_interval: 30s
     static_configs:
       - targets: ["http://nextcloud-web/"]
@@ -98,7 +104,7 @@ scrape_configs:
       - {source_labels: [__param_target], target_label: instance}
       - {target_label: __address__, replacement: blackbox-exporter:9115}
 
-  - job_name: blackbox-http-insecure
+  - job_name: blackbox-https
     metrics_path: /probe
     params: {module: [http_2xx_insecure]}
     scrape_interval: 30s
@@ -109,27 +115,24 @@ scrape_configs:
       - {source_labels: [__param_target], target_label: instance}
       - {target_label: __address__, replacement: blackbox-exporter:9115}
 
-  - job_name: blackbox-openhabian
+  - job_name: blackbox-tls-cert
     metrics_path: /probe
-    params: {module: [http_2xx]}
+    params: {module: [tls_connect]}
+    scrape_interval: 5m
     static_configs:
       - targets:
-          - http://openhabian.bellecerise.local:8080/rest
-          - http://openhabian.bellecerise.local:3000/api/health
-          - http://openhabian.bellecerise.local:8086/ping
-    relabel_configs:
-      - {source_labels: [__address__], target_label: __param_target}
-      - {source_labels: [__param_target], target_label: instance}
-      - {target_label: __address__, replacement: blackbox-exporter:9115}
-
-  - job_name: blackbox-openhabian-proxy
-    metrics_path: /probe
-    params: {module: [http_2xx_insecure]}
-    static_configs:
-      - targets:
-          - https://openhabian.bellecerise.local/rest
-          - https://grafana.openhabian.bellecerise.local/api/health
-          - https://influx.openhabian.bellecerise.local/ping
+          - nas:443
+          - openwrt:443
+          - step-ca:9000
+          - openhabian.bellecerise.local:443
+          - grafana.openhabian.bellecerise.local:443
+          - influx.openhabian.bellecerise.local:443
+          - emby.multimedia.bellecerise.local:443
+          - nextcloud.bellecerise.local:443
+          - seerr.multimedia.bellecerise.local:443
+          - emby.bellecerise.be:443
+          - nextcloud.bellecerise.be:443
+          - seerr.bellecerise.be:443
     relabel_configs:
       - {source_labels: [__address__], target_label: __param_target}
       - {source_labels: [__param_target], target_label: instance}
@@ -173,4 +176,4 @@ scrape_configs:
 
   - job_name: openhabian
     scrape_interval: 30s
-    static_configs: [{targets: ["openhabian.bellecerise.local:9100"]}]   # fill in actual Pi address, same one used in blackbox-openhabian below
+    static_configs: [{targets: ["openhabian.bellecerise.local:9100"]}]   # fill in actual Pi address, same one used in blackbox-http above
