@@ -230,6 +230,20 @@ services:
     volumes:
       - /dev:/dev
 
+  gpu-exporter:
+    image: utkuozdemir/nvidia_gpu_exporter:latest
+    container_name: gpu-exporter
+    runtime: nvidia
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=utility
+
   redis-exporter:
     image: oliver006/redis_exporter:latest
     container_name: redis-exporter

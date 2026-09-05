@@ -2,9 +2,9 @@
   "title": "NAS Overview",
   "uid": "nas-overview",
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "editable": true,
-  "tags": ["nas", "truenas", "zfs", "docker", "nfs"],
+  "tags": ["nas", "truenas", "zfs", "docker", "nfs", "gpu"],
   "timezone": "",
   "time": { "from": "now-6h", "to": "now" },
   "refresh": "30s",
@@ -96,7 +96,7 @@
       ] },
 
     { "id": 102, "type": "row", "title": "Disks / SMART", "gridPos": { "x": 0, "y": 34, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-    { "id": 13, "title": "SMART Status", "description": "smartctl_device_smart_status is the overall pass/fail health assessment - see DiskSmartFailure/DiskTemperatureHigh alert rules.",
+    { "id": 13, "title": "SMART Status & Error Counts", "description": "smartctl_device_smart_status is the overall pass/fail health assessment (see DiskSmartFailure/DiskTemperatureHigh alert rules). Reallocated/Pending/Offline-Uncorrectable Sectors are the standard ATA SMART attributes (ids 5, 197, 198 - applies to sda-style SATA/SAS disks); NVMe Media Errors/Error Log Entries come from the NVMe-specific health log (applies to nvme-style devices) - each device only ever populates the columns for its own bus type, so blanks elsewhere are expected, not missing data. Any sustained nonzero error count (Pending Sectors can blip transiently) means the drive is degrading, even while Status still reports Passed.",
       "type": "table", "gridPos": { "x": 0, "y": 35, "w": 24, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
@@ -104,18 +104,28 @@
         "overrides": [
           { "matcher": { "id": "byName", "options": "Status" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "1": { "text": "Passed", "color": "green" }, "0": { "text": "FAILED", "color": "red" } } }] }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
           { "matcher": { "id": "byName", "options": "Temp (°C)" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 45 }, { "color": "red", "value": 55 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
-          { "matcher": { "id": "byName", "options": "Power On" }, "properties": [{ "id": "unit", "value": "dtdhms" }] }
+          { "matcher": { "id": "byName", "options": "Power On" }, "properties": [{ "id": "unit", "value": "dtdhms" }] },
+          { "matcher": { "id": "byName", "options": "Reallocated Sectors" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "Pending Sectors" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "Offline Uncorrectable" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "NVMe Media Errors" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "NVMe Error Log Entries" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] }
         ]
       },
       "options": { "showHeader": true, "sortBy": [{ "displayName": "Temp (°C)", "desc": true }] },
       "transformations": [
         { "id": "joinByField", "options": { "byField": "device", "mode": "outer" } },
-        { "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "__name__": true, "__name__1": true, "__name__2": true }, "renameByName": { "Value #A": "Status", "Value #B": "Temp (°C)", "Value #C": "Power On" } } }
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "__name__": true, "__name__1": true, "__name__2": true, "__name__3": true, "__name__4": true, "__name__5": true, "__name__6": true, "__name__7": true }, "renameByName": { "Value #A": "Status", "Value #B": "Temp (°C)", "Value #C": "Power On", "Value #D": "Reallocated Sectors", "Value #E": "Pending Sectors", "Value #F": "Offline Uncorrectable", "Value #G": "NVMe Media Errors", "Value #H": "NVMe Error Log Entries" } } }
       ],
       "targets": [
         { "expr": "smartctl_device_smart_status", "instant": true, "format": "table", "refId": "A" },
         { "expr": "smartctl_device_temperature{temperature_type=\"current\"}", "instant": true, "format": "table", "refId": "B" },
-        { "expr": "smartctl_device_power_on_seconds", "instant": true, "format": "table", "refId": "C" }
+        { "expr": "smartctl_device_power_on_seconds", "instant": true, "format": "table", "refId": "C" },
+        { "expr": "sum by (device) (smartctl_device_attribute{attribute_id=\"5\", attribute_value_type=\"raw\"})", "instant": true, "format": "table", "refId": "D" },
+        { "expr": "sum by (device) (smartctl_device_attribute{attribute_id=\"197\", attribute_value_type=\"raw\"})", "instant": true, "format": "table", "refId": "E" },
+        { "expr": "sum by (device) (smartctl_device_attribute{attribute_id=\"198\", attribute_value_type=\"raw\"})", "instant": true, "format": "table", "refId": "F" },
+        { "expr": "sum by (device) (smartctl_device_media_errors)", "instant": true, "format": "table", "refId": "G" },
+        { "expr": "sum by (device) (smartctl_device_num_err_log_entries)", "instant": true, "format": "table", "refId": "H" }
       ] },
     { "id": 14, "title": "Disk I/O", "description": "Physical disks only (nvme*n1, sd[a-f]) - excludes the Pi's mmcblk0 (a different job scraped by the same metric name) and zd* ZFS zvols (a virtual layer on top of these same physical disks, would double-count).",
       "type": "timeseries", "gridPos": { "x": 0, "y": 44, "w": 24, "h": 8 },
@@ -268,6 +278,36 @@
         { "expr": "cloudsync_task_state_info", "instant": true, "format": "table", "refId": "B" },
         { "expr": "cloudsync_task_last_success", "instant": true, "format": "table", "refId": "C" },
         { "expr": "cloudsync_task_last_run_timestamp_seconds * 1000", "instant": true, "format": "table", "refId": "D" }
+      ] },
+
+    { "id": 106, "type": "row", "title": "GPU (Emby Transcoding)", "description": "Emby's runtime: nvidia container is the only consumer of this GPU - see docker-compose-multimedia.yml.", "gridPos": { "x": 0, "y": 104, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 31, "title": "GPU Utilization %", "type": "stat", "gridPos": { "x": 0, "y": 105, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "nvidia_smi_utilization_gpu_ratio * 100", "instant": true, "refId": "A" }] },
+    { "id": 32, "title": "GPU Memory Used %", "type": "stat", "gridPos": { "x": 6, "y": 105, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 95 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "100 * nvidia_smi_memory_used_bytes / nvidia_smi_memory_total_bytes", "instant": true, "refId": "A" }] },
+    { "id": 33, "title": "GPU Temp", "type": "stat", "gridPos": { "x": 12, "y": 105, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "celsius", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 85 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "nvidia_smi_temperature_gpu", "instant": true, "refId": "A" }] },
+    { "id": 34, "title": "Power Draw", "type": "stat", "gridPos": { "x": 18, "y": 105, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "watt", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "nvidia_smi_power_draw_watts", "instant": true, "refId": "A" }] },
+    { "id": 35, "title": "GPU Utilization & Memory Used", "description": "Sustained high utilization outside of active transcodes may mean a transcode is stuck, or that direct-play/hardware-decode fallback isn't working the way it's expected to.",
+      "type": "timeseries", "gridPos": { "x": 0, "y": 109, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 10, "lineWidth": 1 } }, "overrides": [] },
+      "targets": [
+        { "expr": "nvidia_smi_utilization_gpu_ratio * 100", "legendFormat": "Utilization %", "refId": "A" },
+        { "expr": "100 * nvidia_smi_memory_used_bytes / nvidia_smi_memory_total_bytes", "legendFormat": "Memory Used %", "refId": "B" }
       ] }
   ]
 }

@@ -170,6 +170,10 @@ scrape_configs:
     scrape_interval: 5m
     static_configs: [{targets: ["smartctl-exporter:9633"]}]
 
+  - job_name: gpu
+    scrape_interval: 30s
+    static_configs: [{targets: ["gpu-exporter:9835"]}]
+
   - job_name: openwrt
     scrape_interval: 30s
     static_configs: [{targets: ["192.168.1.1:9100"]}]   # port/path confirmed (default /metrics) - fill in real LAN IP once listen_interface is set to 'lan'
