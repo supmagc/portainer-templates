@@ -227,6 +227,7 @@ services:
   tdarr:
     image: ghcr.io/haveagitgat/tdarr:latest
     container_name: tdarr
+    runtime: nvidia
     networks:
       - default
     pull_policy: missing
@@ -263,6 +264,8 @@ services:
       - nodeName=MainNode
       - auth=false
       - openBrowser=false
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
     volumes:
       - /mnt/fastpool/system/processes/tdarr/custom-cont-init.d:/custom-cont-init.d
       - /mnt/fastpool/system/processes/tdarr/server:/app/server
