@@ -1,0 +1,3 @@
+openhabian  /boot                         comp-user-tar
+openhabian  /etc                          comp-user-tar
+openhabian  /var/lib/openhab              comp-user-tar

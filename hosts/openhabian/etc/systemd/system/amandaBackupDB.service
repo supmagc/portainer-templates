@@ -1,0 +1,14 @@
+[Unit]
+Description=Make nightly backup of Amanda database
+After=network.target network-online.target
+Wants=amandaBackupDB.timer
+
+[Service]
+Type=oneshot
+User=backup
+Group=backup
+# NOTE: modified from openHABian's generated version. Original wrote to
+# /mnt/ssd/backup/amanda-backups/ (a path that never existed). Repointed at the
+# rationalised /mnt/ssd/amanda/ layout, added `mkdir -p`, quoted the find glob,
+# and dropped the `&>/dev/null` so failures land in the journal.
+ExecStart=/bin/bash -c 'mkdir -p /mnt/ssd/amanda/db-backups; cd /; /bin/tar czf /mnt/ssd/amanda/db-backups/amanda_data_$(date +%%Y%%m%%d%%H%%M%%S).tar.gz etc/amanda var/lib/amanda var/log/amanda; find /mnt/ssd/amanda/db-backups -name "amanda_data_*" -mtime +30 -delete'

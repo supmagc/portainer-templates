@@ -1,0 +1,10 @@
+[Unit]
+Description=Perform nightly Amanda backup: openhab-dir
+After=network.target network-online.target
+Wants=amdump-openhab-dir.timer
+
+[Service]
+Type=oneshot
+User=backup
+Group=backup
+ExecStart=/bin/bash -c '/usr/sbin/amdump "openhab-dir" &> /dev/null'

@@ -71,6 +71,14 @@ Currently tracked:
   the target is really the SanDisk card reader (guards against a `/dev/sda`↔`/dev/sdb`
   USB re-enumeration writing over the SSD), `99-usb-drives.rules` for stable
   `/dev/sdbackup*` + `/dev/ssd*` names, and `oh-deploy-apply` (see below).
+  **Amanda backup** is hand-managed here — `etc/amanda/openhab-dir/{amanda.conf,disklist,amanda-client.conf}`
+  and the `amdump-openhab-dir` / `amandaBackupDB` units — because it runs dual-storage
+  (local SSD + NFS→NAS→Backblaze), which openHABian's template can't express. **Do not
+  run `openhabian-config` → Backup → Amanda**; it regenerates `amanda.conf` and drops
+  the `nas` storage. See [docs/openhabian-amanda-dual-storage.md](docs/openhabian-amanda-dual-storage.md)
+  for the build/test runbook. Plus `habapp.service`, HabApp `logging.yml`, and the
+  Caddy cert-renewal script `acme-renew.sh` + its `acme-renew.{service,timer}`
+  (migrated off root's crontab) and logrotate rule.
 
 Deploy with:
 ```powershell

@@ -1,0 +1,11 @@
+[Unit]
+Description=Make nightly backup of Amanda database
+
+[Timer]
+Unit=amandaBackupDB.service
+OnCalendar=*-*-* 01:55
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
