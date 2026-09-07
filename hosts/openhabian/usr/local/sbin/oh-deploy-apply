@@ -1,0 +1,84 @@
+#!/bin/bash
+# oh-deploy-apply - install a staged file tree onto this host's real filesystem.
+#
+# scripts/deploy.ps1 can't write root-owned paths on openhabian (it connects as
+# the unprivileged 'openhabian' user, unlike 'nas' which is root). So for that
+# host it scp's the files into ~/.oh-deploy-stage/<relative-path> and then runs
+#   ssh -t openhabian "sudo /usr/local/sbin/oh-deploy-apply <stage-dir>"
+# which is this script: it copies each staged file to /<relative-path>, fixes
+# ownership to root:root and a sane mode, reloads systemd/udev if those trees
+# changed, and clears the staging dir.
+#
+# It does NOT restart or reload application services - that stays a manual
+# follow-up, same contract as deploy.ps1 itself.
+#
+# Bootstrap (first time only, before deploy.ps1 can manage it):
+#   scp hosts/openhabian/usr/local/sbin/oh-deploy-apply openhabian:.oh-deploy-boot
+#   ssh -t openhabian "sudo install -m0755 -oroot -groot .oh-deploy-boot /usr/local/sbin/oh-deploy-apply && rm .oh-deploy-boot"
+set -euo pipefail
+
+STAGE="${1:-/home/${SUDO_USER:-openhabian}/.oh-deploy-stage}"
+STAGE="${STAGE%/}"              # no trailing slash - the prefix strip below depends on it
+
+[[ $EUID -eq 0 ]]        || { echo "oh-deploy-apply: must run as root" >&2; exit 1; }
+[[ -d "$STAGE" ]]        || { echo "oh-deploy-apply: staging dir '$STAGE' not found" >&2; exit 1; }
+# refuse an obviously wrong staging root
+case "$STAGE" in /|/etc|/usr|/home|/root|/boot) echo "oh-deploy-apply: refusing STAGE='$STAGE'" >&2; exit 1;; esac
+
+mapfile -d '' staged < <(find "$STAGE" -type f -print0)
+[[ ${#staged[@]} -gt 0 ]] || { echo "oh-deploy-apply: nothing staged under $STAGE" >&2; exit 1; }
+
+mode_for() {
+	case "$1" in
+		/etc/sudoers.d/*)                                 echo 0440 ;;
+		/usr/local/sbin/*|/usr/local/bin/*|/usr/sbin/*|/usr/bin/*|/bin/*|/sbin/*) echo 0755 ;;
+		*.sh)                                             echo 0755 ;;
+		*)                                               echo 0644 ;;
+	esac
+}
+
+systemd_dirty=0
+udev_dirty=0
+changed=0
+
+for src in "${staged[@]}"; do
+	rel="${src#"$STAGE"}"          # e.g. /etc/systemd/system/sdrsync.service.d/guard.conf
+	dest="$rel"
+	mode="$(mode_for "$dest")"
+
+	if [[ -f "$dest" ]] && cmp -s "$src" "$dest"; then
+		# content identical - still normalise mode/owner, but don't count as a change
+		install -o root -g root -m "$mode" "$src" "$dest"
+		printf '    unchanged  %s\n' "$dest"
+		continue
+	fi
+
+	[[ -e "$dest" ]] && verb=updated || verb=created
+	install -D -o root -g root -m "$mode" "$src" "$dest"
+	printf '    %-10s %s  (mode %s)\n' "$verb" "$dest" "$mode"
+	changed=1
+	case "$dest" in
+		/etc/systemd/*|/lib/systemd/*|/usr/lib/systemd/*) systemd_dirty=1 ;;
+	esac
+	case "$dest" in
+		/etc/udev/*|/lib/udev/*|/usr/lib/udev/*) udev_dirty=1 ;;
+	esac
+done
+
+if (( systemd_dirty )); then
+	echo "==> systemctl daemon-reload"
+	systemctl daemon-reload
+fi
+if (( udev_dirty )); then
+	echo "==> udevadm control --reload && udevadm trigger --subsystem-match=block"
+	udevadm control --reload
+	udevadm trigger --subsystem-match=block
+fi
+
+rm -rf "$STAGE"
+
+if (( changed )); then
+	echo "oh-deploy-apply: done. Restart/reload affected services yourself."
+else
+	echo "oh-deploy-apply: nothing changed."
+fi
