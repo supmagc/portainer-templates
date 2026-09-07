@@ -1,0 +1,16 @@
+[Unit]
+Description=HABApp
+Documentation=https://habapp.readthedocs.io
+After=openhab.service
+
+[Service]
+Type=simple
+User=openhab
+Group=openhabian
+Restart=on-failure
+RestartSec=10min
+UMask=002
+ExecStart=/opt/habapp/bin/habapp -c /etc/openhab/habapp
+
+[Install]
+WantedBy=multi-user.target

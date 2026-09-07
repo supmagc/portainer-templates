@@ -1,0 +1,55 @@
+
+levels:
+  WARNING: WARN
+
+formatters:
+  HABApp_format:
+    format: '[%(asctime)s] [%(name)25s] %(levelname)8s | %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+  Frontail_format:
+    format: '%(asctime)s.%(msecs)03d [%(levelname)-5s] [%(name)-36s] - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+handlers:
+  # There are several Handlers available:
+  #  - logging.handlers.RotatingFileHandler:
+  #    Will rotate when the file reaches a certain size (see python logging documentation for args)
+  #  - HABApp.config.logging.MidnightRotatingFileHandler:
+  #    Will wait until the file reaches a certain size and then will rotate on midnight
+  #  - HABApp.config.logging.CompressedMidnightRotatingFileHandler:
+  #    Same as MidnightRotatingFileHandler but will rotate to a gzipped archive
+  #  - More handlers:
+  #    https://docs.python.org/3/library/logging.handlers.html#rotatingfilehandler
+
+  HABApp_default:
+    class: logging.handlers.RotatingFileHandler
+    filename: '/var/log/openhab/HABApp.log'
+    maxBytes: 4_194_304
+    backupCount: 3
+
+    formatter: HABApp_format
+    level: DEBUG
+
+  EventFile:
+    class: logging.handlers.RotatingFileHandler
+    filename: 'HABApp_events.log'
+    maxBytes: 16_777_216
+    backupCount: 5
+
+    formatter: HABApp_format
+    level: DEBUG
+
+
+loggers:
+  HABApp:
+    level: INFO
+    handlers:
+      - HABApp_default
+    propagate: False
+
+  HABApp.EventBus:
+    level: INFO
+    handlers:
+      - EventFile
+    propagate: False
