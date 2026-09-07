@@ -127,9 +127,9 @@ scrape_configs:
           - openhabian.bellecerise.local:443
           - grafana.openhabian.bellecerise.local:443
           - influx.openhabian.bellecerise.local:443
-          - emby.multimedia.bellecerise.local:443
+          - emby.media.bellecerise.local:443
           - nextcloud.bellecerise.local:443
-          - seerr.multimedia.bellecerise.local:443
+          - seerr.media.bellecerise.local:443
           - emby.bellecerise.be:443
           - nextcloud.bellecerise.be:443
           - seerr.bellecerise.be:443
