@@ -1,0 +1,18 @@
+# Stable, probe-order-independent names for the two USB block devices on this Pi.
+# /dev/sda and /dev/sdb are assigned in USB enumeration order and can swap across
+# a reboot or re-plug; these symlinks always follow the hardware.
+#
+# openHABian's SD-mirroring units still hardcode /dev/sda in their ExecStart
+# (mirror_SD builds partition paths by string concat, so a by-id path can't be
+# used there) - the real protection against a swap writing to the SSD is
+# /usr/local/sbin/sdmirror-guard.sh, wired in as ExecStartPre for
+# sdrawcopy.service / sdrsync.service. These symlinks are for humans and
+# monitoring.
+
+# SanDisk SDDR-B531 microSD card reader - the SD-mirroring target
+SUBSYSTEM=="block", KERNEL=="sd[a-z]",     ENV{ID_SERIAL}=="SanDisk_SDDR-B531_1128240000005943-0:0", SYMLINK+="sdbackup"
+SUBSYSTEM=="block", KERNEL=="sd[a-z][0-9]", ENV{ID_SERIAL}=="SanDisk_SDDR-B531_1128240000005943-0:0", SYMLINK+="sdbackup%n"
+
+# Transcend TS250GMTS425S 250 GB SSD - must never be a mirror target (mounted at /mnt/ssd)
+SUBSYSTEM=="block", KERNEL=="sd[a-z]",     ENV{ID_SERIAL}=="TS250GMTS425S_I964670181", SYMLINK+="ssd"
+SUBSYSTEM=="block", KERNEL=="sd[a-z][0-9]", ENV{ID_SERIAL}=="TS250GMTS425S_I964670181", SYMLINK+="ssd%n"

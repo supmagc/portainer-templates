@@ -66,6 +66,11 @@ Currently tracked:
   and **dual-ships** them to the central Loki *and* a second Loki running locally on the
   Pi (feeds the bundled Grafana's log views) — see
   [CONTEXT.md](docs/CONTEXT.md) → "openHABian log shipping".
+  Also tracked: `sdmirror-guard.sh` + `sd{rawcopy,rsync}.service.d/guard.conf`
+  `ExecStartPre` drop-ins that refuse to run openHABian's SD-mirroring jobs unless
+  the target is really the SanDisk card reader (guards against a `/dev/sda`↔`/dev/sdb`
+  USB re-enumeration writing over the SSD), `99-usb-drives.rules` for stable
+  `/dev/sdbackup*` + `/dev/ssd*` names, and `oh-deploy-apply` (see below).
 
 Deploy with:
 ```powershell
