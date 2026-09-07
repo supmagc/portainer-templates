@@ -619,7 +619,7 @@ groups:
       # filter here so both count. Most load-bearing for openhabian's three
       # subdomains - their shared cert is renewed nightly by acme.sh against
       # step-ca on a documented fragile path (acme.sh must successfully stop
-      # Caddy to bind :80 for the HTTP-01 challenge; see docs/CONTEXT.md) with
+      # Caddy to bind :80 for the HTTP-01 challenge; see docs/network.md) with
       # nothing else watching for a silent renewal failure.
       - uid: cert-expiring-soon
         title: CertExpiringSoon

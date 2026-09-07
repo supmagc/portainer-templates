@@ -2,7 +2,8 @@
 
 Conventions for Claude (or any other agent) picking this repo back up. This is about
 *how* to work here — see [README.md](README.md) for what the repo contains and
-[context.md](context.md) for why it's shaped the way it is.
+[docs/CONTEXT.md](docs/CONTEXT.md) (and its per-topic files) for why it's shaped the way
+it is.
 
 ## Environment
 
@@ -17,7 +18,7 @@ Conventions for Claude (or any other agent) picking this repo back up. This is a
 - A **Grafana MCP server** is configured (`.mcp.json`, git-ignored — it holds a real
   service-account token) and connected. Use it to query live Prometheus/Loki data,
   inspect dashboards, and check alert rules *before* writing PromQL or dashboard JSON —
-  this caught real bugs (see context.md's `job`/`exported_job` collision) that would have
+  this caught real bugs (see docs/monitoring.md's `job`/`exported_job` collision) that would have
   been invisible from source alone.
 
 ## The core repo convention
@@ -62,7 +63,7 @@ for when something looks unusual.
 
 When a table panel combines more than one Prometheus query into one row per entity, use
 Grafana's `joinByField` transform with an explicit `byField` key — not `merge`, which
-breaks silently on asymmetric label sets (see context.md for the specific bugs this
+breaks silently on asymmetric label sets (see docs/monitoring.md for the specific bugs this
 caused). Always exclude the `__name__` field(s) `joinByField` exposes. Watch for any label
 literally named `job` on a custom/textfile-collector metric — it collides with
 Prometheus's own scrape-config meta-label and gets silently renamed to `exported_job`.

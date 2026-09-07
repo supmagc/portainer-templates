@@ -6,9 +6,10 @@ a few other hosts on the network. This repo is the source of truth for *what run
 *how it's configured*; the actual container lifecycle (pull/up/down) is driven by
 Portainer's own stack UI, not by running `docker compose` from here.
 
-See also: [context.md](context.md) for the deeper "why" (architecture decisions, the
-monitoring migration, known gotchas) and [agents.md](agents.md) for conventions an AI
-assistant should follow when working in this repo.
+See also: [docs/CONTEXT.md](docs/CONTEXT.md) for the deeper "why" (architecture decisions,
+the monitoring migration, known gotchas — split into per-topic files under `docs/`) and
+[AGENTS.md](AGENTS.md) for conventions an AI assistant should follow when working in this
+repo.
 
 ## Layout
 
@@ -18,7 +19,7 @@ hosts/<HOST>/...        Version-controlled config files, mirroring each host's r
                          filesystem 1:1. Deployed with scripts/deploy.ps1.
 scripts/deploy.ps1       Interactive/scriptable scp deployer for hosts/.
 scratchpad/               Git-ignored. Secrets, host-only files, and drafts — see
-                         agents.md for exactly what belongs here vs. hosts/.
+                         AGENTS.md for exactly what belongs here vs. hosts/.
 logos/                    A couple of icon assets (Emby, Traefik) — not otherwise wired up.
 ```
 
@@ -61,22 +62,22 @@ Currently tracked:
 - **`openhabian`** — a native (non-Docker) Raspberry Pi install (`192.168.1.154`) running
   openHAB. Tracked files are `node_exporter`/`promtail` systemd units, Promtail's scrape
   config, and the Caddy `Caddyfile` (reverse-proxies openHAB plus `grafana.` / `influx.`
-  subdomains — see [CONTEXT.md](docs/CONTEXT.md) for the step-ca/acme.sh cert setup).
+  subdomains — see [docs/network.md](docs/network.md) for the step-ca/acme.sh cert setup).
   Promtail tails the openHAB core / `events.log` / HabApp logs plus the systemd journal
   and **dual-ships** them to the central Loki *and* a second Loki running locally on the
   Pi (feeds the bundled Grafana's log views) — see
-  [CONTEXT.md](docs/CONTEXT.md) → "openHABian log shipping".
+  [docs/monitoring.md](docs/monitoring.md) → "openHABian log shipping".
   Also tracked: `sdmirror-guard.sh` + `sd{rawcopy,rsync}.service.d/guard.conf`
   `ExecStartPre` drop-ins that refuse to run openHABian's SD-mirroring jobs unless
   the target is really the SanDisk card reader (guards against a `/dev/sda`↔`/dev/sdb`
   USB re-enumeration writing over the SSD), `99-usb-drives.rules` for stable
   `/dev/sdbackup*` + `/dev/ssd*` names, and `oh-deploy-apply` (see below).
-  **Amanda backup** is hand-managed here — `etc/amanda/openhab-dir/{amanda.conf,disklist,amanda-client.conf}`
-  and the `amdump-openhab-dir` / `amandaBackupDB` units — because it runs dual-storage
-  (local SSD + NFS→NAS→Backblaze), which openHABian's template can't express. **Do not
-  run `openhabian-config` → Backup → Amanda**; it regenerates `amanda.conf` and drops
-  the `nas` storage. See [docs/openhabian-amanda-dual-storage.md](docs/openhabian-amanda-dual-storage.md)
-  for the build/test runbook. Plus `habapp.service`, HabApp `logging.yml`, and the
+  **Amanda backup** is hand-managed here (`etc/amanda/openhab-dir/*` plus the
+  `amdump-openhab-dir` / `amandaBackupDB` units) because it runs dual-storage that
+  openHABian's template can't express — **do not run `openhabian-config` → Backup →
+  Amanda**, it regenerates `amanda.conf` and drops the `nas` storage. See
+  [docs/backups.md](docs/backups.md) for the layout and bring-up state. Plus
+  `habapp.service`, HabApp `logging.yml`, and the
   Caddy cert-renewal script `acme-renew.sh` + its `acme-renew.{service,timer}`
   (migrated off root's crontab) and logrotate rule.
 
@@ -103,5 +104,5 @@ else.
 No tokens, passwords, API keys, or connection secrets anywhere in this repo. Files under
 manual/UI-only control (e.g. Grafana's alert *contact point*, which holds a real Pushover
 token) are never provisioned as files at all — they're configured by hand in the Grafana
-UI and stay that way. See [agents.md](agents.md) for the full secret-handling convention
+UI and stay that way. See [AGENTS.md](AGENTS.md) for the full secret-handling convention
 and where working files with real credentials actually live (`scratchpad/`, git-ignored).
