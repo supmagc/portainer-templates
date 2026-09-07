@@ -75,6 +75,16 @@ Deploy with:
 It only copies files — restarting/reloading the affected service on the target host is a
 manual follow-up step (the script says so on exit, and doesn't guess which service).
 
+**Root-owned paths on non-root hosts:** `nas` is connected to as `root`, so `scp` writes
+its real paths directly. `openhabian` is connected to as the unprivileged `openhabian`
+user, so `deploy.ps1` detects that (via `ssh -G`), `scp`s the files into
+`~/.oh-deploy-stage/<path>`, then runs `sudo /usr/local/sbin/oh-deploy-apply` over
+`ssh -t` — one sudo-password prompt per run — which moves them into place as `root:root`
+and runs `systemctl daemon-reload` / `udevadm` reload if those trees changed. That helper
+is itself tracked at `hosts/openhabian/usr/local/sbin/oh-deploy-apply`; bootstrap it once
+by hand (header comment in the script) before `deploy.ps1` can manage it and everything
+else.
+
 ## What NOT to commit
 
 No tokens, passwords, API keys, or connection secrets anywhere in this repo. Files under

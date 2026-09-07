@@ -170,13 +170,44 @@ if (-not $localFiles) {
     Write-Error "Nothing to deploy."
 }
 
-foreach ($localFile in $localFiles) {
-    $relative = $localFile.Substring($hostDir.Length + 1) -replace '\\', '/'
-    $remotePath = "/$relative"
-    $remoteDir = $remotePath -replace '/[^/]*$', ''
-    Write-Host "==> $localFile -> ${DeployHost}:$remotePath"
-    ssh $DeployHost "mkdir -p '$remoteDir'"
-    scp $localFile "${DeployHost}:$remotePath"
+# Deploy writes to the host's real filesystem paths, which needs root. Hosts we
+# connect to as root (e.g. nas) get a direct scp. Hosts we connect to as an
+# unprivileged user (e.g. openhabian) can't scp into /etc or /usr, so instead we
+# stage the files under ~/.oh-deploy-stage/<path> and let a small root helper
+# (/usr/local/sbin/oh-deploy-apply, itself tracked under hosts/<host>/) move them
+# into place - one sudo password prompt per run.
+$remoteUser = (
+    ssh -G $DeployHost 2>$null |
+        Where-Object { $_ -match '^user\s+(.+)$' } |
+        ForEach-Object { $Matches[1].Trim() } |
+        Select-Object -First 1
+)
+$useStaging = $remoteUser -and $remoteUser -ne 'root'
+
+if ($useStaging) {
+    $stageDir = '.oh-deploy-stage'
+    Write-Host "Host '$DeployHost' connects as '$remoteUser' - staging then applying with sudo."
+    ssh $DeployHost "rm -rf '$stageDir' && mkdir -p '$stageDir'"
+    foreach ($localFile in $localFiles) {
+        $relative = $localFile.Substring($hostDir.Length + 1) -replace '\\', '/'
+        $stagePath = "$stageDir/$relative"
+        $stageParent = $stagePath -replace '/[^/]*$', ''
+        Write-Host "==> $localFile -> ${DeployHost}:/$relative  (staged)"
+        ssh $DeployHost "mkdir -p '$stageParent'"
+        scp $localFile "${DeployHost}:$stagePath"
+    }
+    Write-Host ""
+    Write-Host "Applying as root on $DeployHost (enter your sudo password if prompted):"
+    ssh -t $DeployHost "sudo /usr/local/sbin/oh-deploy-apply"
+} else {
+    foreach ($localFile in $localFiles) {
+        $relative = $localFile.Substring($hostDir.Length + 1) -replace '\\', '/'
+        $remotePath = "/$relative"
+        $remoteDir = $remotePath -replace '/[^/]*$', ''
+        Write-Host "==> $localFile -> ${DeployHost}:$remotePath"
+        ssh $DeployHost "mkdir -p '$remoteDir'"
+        scp $localFile "${DeployHost}:$remotePath"
+    }
 }
 
 # --- remember selections ---
