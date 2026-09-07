@@ -10,7 +10,8 @@ the repo root and under `docs/`; read them in this order when picking up work he
    relevant one before non-trivial changes there:
    - **[docs/monitoring.md](docs/monitoring.md)** — the Zabbix→Prometheus/Grafana/Loki
      migration, native-Grafana alerting, the `job`/`exported_job` label collision, TrueNAS
-     `midclt`-based scheduled-task monitoring, openHABian log shipping.
+     `midclt`-based scheduled-task monitoring, the `ContainerUnhealthy` alert and its
+     non-stock-cAdvisor `container_health_state` dependency, openHABian log shipping.
    - **[docs/network.md](docs/network.md)** — OpenWrt zone/firewall topology, the SNMP
      bring-up chain, the openHABian Caddy reverse proxy and its step-ca / acme.sh cert.
    - **[docs/backups.md](docs/backups.md)** — the openHABian Amanda dual-storage backup

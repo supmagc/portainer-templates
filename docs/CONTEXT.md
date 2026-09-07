@@ -8,7 +8,9 @@ area — it'll save you from re-discovering things the hard way.
 - **[monitoring.md](monitoring.md)** — the Zabbix→Prometheus/Grafana/Loki migration, why
   alerting is native-Grafana not Alertmanager, the Grafana provisioning "locked" gotcha,
   the `merge`/`joinByField` table-panel pattern, the `job`/`exported_job` label collision,
-  TrueNAS `midclt`-based scheduled-task monitoring, and openHABian log shipping.
+  TrueNAS `midclt`-based scheduled-task monitoring, the `ContainerUnhealthy` alert and its
+  fragile dependency on a `container_health_state` metric that isn't in stock cAdvisor, and
+  openHABian log shipping.
 - **[network.md](network.md)** — the OpenWrt router's zone/firewall topology, the SNMP
   bring-up chain, and the openHABian Caddy reverse proxy plus its step-ca / acme.sh cert.
 - **[backups.md](backups.md)** — the openHABian Amanda dual-storage backup (local SSD +

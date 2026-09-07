@@ -138,6 +138,66 @@ scrape_configs:
       - {source_labels: [__param_target], target_label: instance}
       - {target_label: __address__, replacement: blackbox-exporter:9115}
 
+  # ICMP reachability for infra hosts that have no exporter of their own.
+  # Hosts that ARE scraped/probed elsewhere (router, Pi, switch, APs) are still
+  # listed here on purpose - a ping is a cheaper, independent liveness signal
+  # than "did the full node-exporter/SNMP scrape succeed".
+  #
+  # Reachability note: blackbox-exporter runs on the NAS, which sits on `lan`
+  # (192.168.1.0/24). The 192.168.1.x targets below are same-subnet and probe
+  # directly. The 192.168.0.x (admin) targets ride the same lan->admin path SNMP
+  # uses, but that firewall rule is UDP/161-scoped - ICMP echo needs its own
+  # lan->admin allow or these page as down. The guest (192.168.2.1) / work
+  # (192.168.3.1) router interfaces are in isolated zones with no lan->* forward
+  # at all and will stay down until one is added - left in on purpose so "all
+  # endpoints" is the literal target list, comment them out to silence.
+  - job_name: blackbox-icmp
+    metrics_path: /probe
+    params: {module: [icmp]}
+    scrape_interval: 30s
+    static_configs:
+      # OpenWrt - one IP per VLAN interface (a single dead VLAN shows as one
+      # target down while the others stay green)
+      - targets: ["192.168.1.1"]
+        labels: {role: router, name: openwrt, vlan: lan}
+      - targets: ["192.168.0.1"]
+        labels: {role: router, name: openwrt, vlan: admin}
+      - targets: ["192.168.2.1"]
+        labels: {role: router, name: openwrt, vlan: guest}
+      - targets: ["192.168.3.1"]
+        labels: {role: router, name: openwrt, vlan: work}
+      # NAS - one IP per service interface
+      - targets: ["192.168.1.101"]
+        labels: {role: nas, name: nas, iface: main}
+      - targets: ["192.168.1.110"]
+        labels: {role: nas, name: nas, iface: docker}
+      - targets: ["192.168.1.111"]
+        labels: {role: nas, name: nas, iface: nfs}
+      - targets: ["192.168.1.112"]
+        labels: {role: nas, name: nas, iface: edge}
+      # switch + APs (also SNMP-scraped; ICMP is the cheap independent signal)
+      - targets: ["192.168.0.2"]
+        labels: {role: switch, name: jetstream}
+      - targets: ["192.168.0.3"]
+        labels: {role: ap, name: eap1}
+      - targets: ["192.168.0.4"]
+        labels: {role: ap, name: eap2}
+      - targets: ["192.168.0.5"]
+        labels: {role: ap, name: eap3}
+      # openHABian Pi + the field-bus devices openHAB talks to
+      - targets: ["192.168.1.154"]
+        labels: {role: host, name: openhabian}
+      - targets: ["192.168.1.150"]
+        labels: {role: field-device, name: wago-modbus}
+      - targets: ["192.168.1.151"]
+        labels: {role: field-device, name: entec-dmx}
+      - targets: ["192.168.1.153"]
+        labels: {role: field-device, name: onewire}
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: blackbox-exporter:9115}
+
   - job_name: openhabian-grafana
     scrape_interval: 60s
     static_configs: [{targets: ["openhabian.bellecerise.local:3000"]}]

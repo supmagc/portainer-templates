@@ -196,6 +196,8 @@ services:
       - networking_default
     pull_policy: missing
     restart: unless-stopped
+    cap_add:
+      - NET_RAW
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     volumes:

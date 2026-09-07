@@ -161,6 +161,77 @@ Note: Promtail is deprecated upstream (folded into Grafana Alloy, removed from L
 3.7.3). The standalone binary still works and matches the NAS stack's `grafana/promtail`
 — an eventual Alloy migration is the long-term path for both hosts.
 
+## ICMP reachability probes (network hosts)
+
+The goal is that *every* endpoint has a liveness signal, including hosts that run no
+exporter of their own — the openHAB field-bus boxes (Wago Modbus, Entec DMX, OneWire),
+the switch/APs (SNMP covers their interfaces, not "is the box up"), and each of the
+router's per-VLAN interface IPs. Those get a plain ping via blackbox-exporter's `icmp`
+prober.
+
+- **`icmp` module** in `blackbox/config.yml` — `preferred_ip_protocol: ip4`,
+  `ip_protocol_fallback: false`, same shape as the HTTP modules.
+- **`blackbox-exporter` needs `cap_add: [NET_RAW]`** (`compose/docker-compose-monitoring.yml`).
+  The `prom/blackbox-exporter` image runs as an unprivileged user and the `icmp` prober
+  opens raw sockets — without the cap every ICMP probe fails with a permission error.
+  Adding the cap is a **container recreate**, not a reload.
+- **`blackbox-icmp` job** (`prometheus/config.yml`) — one static list, each target
+  labelled `role` (`router`/`nas`/`switch`/`ap`/`host`/`field-device`) plus `name`, and
+  `vlan`/`iface` where one box has several IPs (the router has four, the NAS has four).
+  No new alert rule needed: the existing `ProbeFailing` rule matches any `probe_success`
+  series with no job filter.
+
+**Reachability caveat — some targets are expected down until a firewall rule is added.**
+blackbox-exporter runs on the NAS, which is on `lan` (192.168.1.0/24):
+
+- `192.168.1.x` targets are same-subnet and probe directly.
+- `192.168.0.x` (admin VLAN: router, switch, APs) ride the same `lan`→`admin` path SNMP
+  uses, but that rule is UDP/161-scoped — ICMP echo needs its own `lan`→`admin` allow or
+  these page as down (see [network.md](network.md)).
+- The `guest` / `work` router interface IPs (`192.168.2.1` / `192.168.3.1`) are in
+  isolated zones with no `lan`→`*` forward at all — down until one is added. They're left
+  in the target list on purpose so it's literally "all endpoints"; comment them out to
+  silence.
+
+## Traefik-endpoint discovery for blackbox (planned, not built)
+
+The blackbox HTTP/TLS target lists in `prometheus/config.yml` are hand-maintained and
+already carry `# VERIFY` / `# fill in` TODOs. The intended fix is to make Traefik the
+source of truth: a host-side script (same idiom as `zpool-metrics.sh` /
+`cloudsync-tasks-metrics.sh`) polls `traefik:8080/api/http/routers` and
+`traefik-edge:8080/api/http/routers`, pulls the `Host(...)` rules out of each router, and
+writes a Prometheus `file_sd` JSON to a bind-mounted dir. `blackbox-traefik` /
+`blackbox-traefik-edge` jobs then take targets from `file_sd_configs` + the existing
+`http_2xx*` / `tls_connect` modules — add a service to a compose stack, it gets probed,
+no Prometheus edit. Not implemented yet.
+
+## Container health alerting (`ContainerUnhealthy`)
+
+`ContainerCrashLooping` only fires on containers that are *restarting*
+(`changes(container_start_time_seconds[15m]) > 2`). A container whose Docker
+healthcheck is failing while its process stays up never restarts on its own —
+`restart: unless-stopped` reacts to the process exiting, not to health status (only
+Swarm acts on `unhealthy`, and there's no autoheal sidecar here). So an
+unhealthy-but-alive container sat silently until `ContainerUnhealthy` was added.
+
+That rule alerts on **`container_health_state == 0`** with `for: 10m`. Value
+encoding, confirmed against the live instance: `-1` = no `HEALTHCHECK` defined
+(most containers here), `0` = unhealthy **or** still in `starting`, `1` = healthy.
+The `0` state is hit routinely on every healthchecked container's restart, so the
+10m `for:` is load-bearing — it's what separates a genuinely stuck container from
+one that's still inside its `start_period`. Nothing in this stack takes >10m to go
+healthy.
+
+**Gotcha:** `container_health_state` is **not in any stock cAdvisor release**
+(checked `master` and v0.49–v0.53). It matches an unmerged upstream PR, so the
+running `cadvisor` must be a patched/forked build despite
+`docker-compose-monitoring.yml` pinning `gcr.io/cadvisor/cadvisor:latest`. A plain
+image repull (watchtower, or a manual pull) would silently drop the metric, and
+the rule's `noDataState: OK` would hide that. If this rule ever goes quiet,
+check the metric still exists before trusting the silence. The durable fix, if it
+comes to that, is a `docker inspect`-based textfile-collector script in the
+`cron-wrapper.sh` mould rather than depending on the forked image.
+
 ## Other resolved investigations, briefly
 
 - **Router traffic panel "triple-counting"**: `network-details.json` was summing

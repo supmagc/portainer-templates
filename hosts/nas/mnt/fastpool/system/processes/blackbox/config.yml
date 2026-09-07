@@ -20,6 +20,11 @@ modules:
       no_follow_redirects: true   # nextcloud-web force-redirects to https, which it doesn't listen on internally (Traefik terminates TLS at the edge only) - a redirect response still proves the app is up
       preferred_ip_protocol: ip4
       ip_protocol_fallback: false
+  icmp:
+    prober: icmp
+    icmp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
   tls_connect:
     prober: tcp
     tcp:

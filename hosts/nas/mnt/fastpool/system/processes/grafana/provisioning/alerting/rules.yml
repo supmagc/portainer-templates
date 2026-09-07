@@ -94,6 +94,67 @@ groups:
           summary: "Container {{ $labels.name }} is restarting repeatedly"
           description: "Container {{ $labels.name }} has restarted {{ $values.B.Value }} times in the last 15 minutes."
 
+      # ContainerCrashLooping (above) only catches containers that are *restarting*.
+      # A container whose Docker healthcheck is failing but whose process stays up
+      # never restarts on its own (restart: unless-stopped reacts to the process
+      # exiting, not to health) - so it sits there unhealthy and nothing notices.
+      # This rule closes that gap.
+      #
+      # container_health_state is a cAdvisor metric (Docker-only). Values seen on
+      # this box: -1 = no HEALTHCHECK defined, 0 = unhealthy OR still "starting",
+      # 1 = healthy. We alert on == 0; the 10m `for:` is what separates a genuinely
+      # stuck container from one that's legitimately still in its start_period
+      # (nothing here takes >10m to go healthy).
+      #
+      # NOTE: this metric is NOT in any stock cAdvisor release (checked master +
+      # v0.49-v0.53) - the running cadvisor image is a patched/forked build even
+      # though docker-compose-monitoring.yml pins gcr.io/cadvisor/cadvisor:latest.
+      # A plain image repull would silently drop the metric, and noDataState: OK
+      # (below) would hide that. See docs/monitoring.md.
+      - uid: container-unhealthy
+        title: ContainerUnhealthy
+        condition: C
+        for: 10m
+        noDataState: OK   # see ContainerCrashLooping above - TargetDown already covers cadvisor itself being unreachable
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: container_health_state{name!=""} == 0
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} is unhealthy"
+          description: "Container {{ $labels.name }} (image {{ $labels.image }}) has had a failing Docker healthcheck for 10+ minutes — cAdvisor reports container_health_state=0 (unhealthy, or stuck in 'starting'). It won't necessarily restart on its own, so ContainerCrashLooping won't catch it — check the container's healthcheck and logs."
+
       - uid: disk-space-low
         title: DiskSpaceLow
         condition: C
@@ -616,7 +677,14 @@ groups:
       # dedicated coverage is blackbox-tls-cert (tls_connect module, checks
       # reachability + expiry only), plus it comes for free from every
       # blackbox-https target since those are also https://. No job
-      # filter here so both count. Most load-bearing for openhabian's three
+      # filter here so both count - but step-ca:9000 is excluded (regex, since
+      # blackbox-tls-cert labels it `step-ca:9000` while blackbox-https labels
+      # the same listener `https://step-ca:9000/health`): the cert step-ca
+      # serves on its own API listener is self-issued with the default 24h
+      # lifetime and auto-renewed at ~16h, so it's permanently under the 7d
+      # threshold. A real failure of that self-renewal takes the CA down and
+      # trips ProbeFailing on both step-ca probes instead.
+      # Most load-bearing for openhabian's three
       # subdomains - their shared cert is renewed nightly by acme.sh against
       # step-ca on a documented fragile path (acme.sh must successfully stop
       # Caddy to bind :80 for the HTTP-01 challenge; see docs/network.md) with
@@ -633,7 +701,7 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: (probe_ssl_earliest_cert_expiry - time()) / 86400
+              expr: (probe_ssl_earliest_cert_expiry{instance!~".*step-ca:9000.*"} - time()) / 86400
               instant: true
               refId: A
           - refId: B

@@ -4,10 +4,48 @@ The OpenWrt router's zone/firewall layout, the SNMP bring-up chain, and the open
 reverse proxy plus its step-ca / acme.sh certificate. Read this before touching firewall
 rules, the SNMP jobs, or the Pi's Caddy config.
 
+## VLANs and fixed addresses
+
+The OpenWrt router terminates one interface per VLAN; its address on each is `.1`.
+
+| VLAN | Zone | Subnet | Router IP | Holds |
+|---|---|---|---|---|
+| 0 | `admin` | 192.168.0.0/24 | 192.168.0.1 | switch, APs, admin desktop |
+| 1 | `lan` | 192.168.1.0/24 | 192.168.1.1 | NAS, openHABian Pi, openHAB field-bus devices |
+| 2 | `guest` | 192.168.2.0/24 | 192.168.2.1 | isolated — no `lan`→`guest` forward |
+| 3 | `work` | 192.168.3.0/24 | 192.168.3.1 | isolated — no `lan`→`work` forward |
+| — | `iot` | — | — | zone defined but no interface attached (forwarding rules are no-ops) |
+| — | `vpn` | — | — | WireGuard |
+| — | `wan` | — | — | PPPoE uplink |
+
+> The VLAN numbers above are the user's labels. Earlier notes recorded `admin` as 802.1Q
+> **VLAN 99** — confirm the real tag vs. the label before relying on either.
+
+Fixed device addresses:
+
+| Device | IP | VLAN | Notes |
+|---|---|---|---|
+| OpenWrt router | 192.168.0.1 / .1.1 / .2.1 / .3.1 | admin / lan / guest / work | one IP per VLAN interface |
+| NAS (`nas`) — main | 192.168.1.101 | lan | TrueNAS SCALE host |
+| NAS — docker | 192.168.1.110 | lan | container / Traefik (internal) services |
+| NAS — nfs | 192.168.1.111 | lan | NFS exports |
+| NAS — edge | 192.168.1.112 | lan | Traefik-Edge (WAN-facing) |
+| JetStream switch | 192.168.0.2 | admin | TP-Link T1600G-28PS (SNMP: `if_mib`) |
+| EAP1 | 192.168.0.3 | admin | TP-Link EAP AP (SNMP: `if_mib`) |
+| EAP2 | 192.168.0.4 | admin | TP-Link EAP AP (SNMP: `if_mib`) |
+| EAP3 | 192.168.0.5 | admin | TP-Link EAP AP (SNMP: `if_mib`) |
+| openHABian Pi | 192.168.1.154 | lan | openHAB host (also `openhabian.bellecerise.local`) |
+| Wago Modbus | 192.168.1.150 | lan | openHAB field bus — Modbus/TCP |
+| Entec DMX | 192.168.1.151 | lan | openHAB field bus — DMX lighting gateway |
+| OneWire | 192.168.1.153 | lan | openHAB field bus — 1-Wire gateway |
+
+All of these are the `blackbox-icmp` target list — see
+[monitoring.md](monitoring.md#icmp-reachability-probes-network-hosts).
+
 ## Network/firewall topology (OpenWrt router)
 
-Zones: `wan`, `lan` (192.168.1.0/24 — NAS lives here), `guest`, `work`,
-`admin` (VLAN99, 192.168.0.0/24), `iot`, `vpn` (WireGuard). **`admin` is not purely
+Zones (subnets and per-VLAN router IPs are in the table above): `wan`, `lan` (NAS lives
+here), `guest`, `work`, `admin`, `iot`, `vpn`. **`admin` is not purely
 network-gear** — it also carries the user's administration desktop, which is why some
 `lan`→`admin` forwards exist for desktop-specific apps (Phone Link, LocalSend) alongside
 the switch/AP-oriented ones (like the SNMP rule below). When a rule in `admin` looks odd
@@ -19,6 +57,14 @@ whole internet); an `iot` zone with no interface actually attached to it (its fo
 rules are currently no-ops); Emby/Seerr WAN DNAT rules that may be redundant now that
 Traefik-Edge fronts 80/443 with real TLS; and four guest/work DNS rules that are disabled
 and point at resolvers whose reachability hasn't been confirmed.
+
+**Monitoring ICMP allows (open):** the `blackbox-icmp` job (see
+[monitoring.md](monitoring.md#icmp-reachability-probes-network-hosts)) pings infra hosts
+from the NAS on `lan`. Reaching the `admin` VLAN targets (router `192.168.0.1`, switch,
+APs) needs a `lan`→`admin` **ICMP** allow — the existing SNMP rule only permits UDP/161,
+so those probes fail until a rule is added. The `guest` / `work` router IPs
+(`192.168.2.1` / `192.168.3.1`) have no `lan`→`*` forward at all and stay down until one
+is; decide per target whether it's worth a rule or should be dropped from the job.
 
 ## SNMP (switch/APs)
 
