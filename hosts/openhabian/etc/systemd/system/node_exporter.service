@@ -12,7 +12,7 @@ After=network.target
 # during setup - run `systemctl list-timers` on the Pi to confirm the real
 # unit names match this filter before relying on it; widen/narrow the regex
 # below if not.
-ExecStart=/usr/local/bin/node_exporter --collector.systemd --collector.systemd.unit-include=^(amdump-.*|amandaBackupDB|sdrawcopy|sdrsync)\.(service|timer)$
+ExecStart=/usr/local/bin/node_exporter --collector.systemd --collector.systemd.unit-include=^(amdump-.*|amandaBackupDB|sdrawcopy|sdrsync|acme-renew)\.(service|timer)$
 Restart=on-failure
 User=nobody
 

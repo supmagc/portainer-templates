@@ -1,0 +1,14 @@
+[Unit]
+Description=Renew the Caddy TLS cert from step-ca (acme.sh wrapper)
+Documentation=file:///home/openhabian/acme-renew.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# runs as root: the script stops/starts caddy and writes /etc/caddy/certs/*
+ExecStart=/home/openhabian/acme-renew.sh
+# keep the historical logfile (logrotate.d/acme-renew rotates it); unit
+# start/stop/result is also in the journal via `journalctl -u acme-renew`
+StandardOutput=append:/var/log/acme-renew.log
+StandardError=append:/var/log/acme-renew.log
