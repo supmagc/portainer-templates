@@ -102,20 +102,23 @@ groups:
       #
       # container_health_state is a cAdvisor metric (Docker-only). Values seen on
       # this box: -1 = no HEALTHCHECK defined, 0 = unhealthy OR still "starting",
-      # 1 = healthy. We alert on == 0; the 10m `for:` is what separates a genuinely
-      # stuck container from one that's legitimately still in its start_period
-      # (nothing here takes >10m to go healthy).
+      # 1 = healthy. Query is `>= 0` (not `== 0`) so every health-checked container
+      # yields an alert instance - Normal at 1, Alerting at 0 - the same all-series
+      # pattern as ProbeFailing; the -1 (no-healthcheck) containers drop out since
+      # there's nothing to alert on. Threshold fires at `< 1`, i.e. exactly 0. The
+      # 10m `for:` separates a genuinely stuck container from one legitimately
+      # still in its start_period (nothing here takes >10m to go healthy).
       #
       # NOTE: this metric is NOT in any stock cAdvisor release (checked master +
       # v0.49-v0.53) - the running cadvisor image is a patched/forked build even
       # though docker-compose-monitoring.yml pins gcr.io/cadvisor/cadvisor:latest.
-      # A plain image repull would silently drop the metric, and noDataState: OK
-      # (below) would hide that. See docs/monitoring.md.
+      # A plain image repull would silently drop the metric; noDataState: NoData
+      # (below) surfaces that instead of hiding it. See docs/monitoring.md.
       - uid: container-unhealthy
         title: ContainerUnhealthy
         condition: C
         for: 10m
-        noDataState: OK   # see ContainerCrashLooping above - TargetDown already covers cadvisor itself being unreachable
+        noDataState: NoData   # metric is present for every healthchecked container normally - no data means cadvisor is down (TargetDown covers that) or the forked image lost the metric (want to know)
         execErrState: Error
         data:
           - refId: A
@@ -123,7 +126,7 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: container_health_state{name!=""} == 0
+              expr: container_health_state{name!=""} >= 0
               instant: true
               refId: A
           - refId: B

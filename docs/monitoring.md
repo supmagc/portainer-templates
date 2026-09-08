@@ -214,13 +214,28 @@ healthcheck is failing while its process stays up never restarts on its own —
 Swarm acts on `unhealthy`, and there's no autoheal sidecar here). So an
 unhealthy-but-alive container sat silently until `ContainerUnhealthy` was added.
 
-That rule alerts on **`container_health_state == 0`** with `for: 10m`. Value
-encoding, confirmed against the live instance: `-1` = no `HEALTHCHECK` defined
-(most containers here), `0` = unhealthy **or** still in `starting`, `1` = healthy.
+That rule queries **`container_health_state{name!=""} >= 0`** (threshold fires at
+`< 1`, i.e. exactly `0`) with `for: 10m`. Value encoding, confirmed against the
+live instance: `-1` = no `HEALTHCHECK` defined (most containers here), `0` =
+unhealthy **or** still in `starting`, `1` = healthy. The `>= 0` (rather than a
+PromQL `== 0` filter) means **every health-checked container produces an alert
+instance** — Normal at `1`, Alerting at `0` — the same all-series listing you get
+from `ProbeFailing`, instead of the rule only ever showing the one bad container.
+The `-1` (no-healthcheck) containers drop out since there's nothing to alert on.
 The `0` state is hit routinely on every healthchecked container's restart, so the
 10m `for:` is load-bearing — it's what separates a genuinely stuck container from
 one that's still inside its `start_period`. Nothing in this stack takes >10m to go
-healthy.
+healthy. `noDataState` is `NoData` (not `OK`): the query returns a row per
+health-checked container whenever cAdvisor is up, so "no data" means cAdvisor is
+down (TargetDown covers that) or the forked image has lost the metric — both
+worth surfacing.
+
+Why the difference in behaviour vs. a rule like `ProbeFailing`: both use the
+identical `query → reduce → threshold` node structure. `ProbeFailing`'s query is
+bare `probe_success`, so Prometheus returns a series for every target and the
+*Grafana threshold* decides firing per-series. A PromQL filter like
+`container_health_state == 0` instead drops every non-matching series before it
+ever reaches Grafana, so only the firing ones exist as instances.
 
 **Gotcha:** `container_health_state` is **not in any stock cAdvisor release**
 (checked `master` and v0.49–v0.53). It matches an unmerged upstream PR, so the
