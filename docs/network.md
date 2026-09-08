@@ -51,20 +51,22 @@ network-gear** — it also carries the user's administration desktop, which is w
 the switch/AP-oriented ones (like the SNMP rule below). When a rule in `admin` looks odd
 for "just switches/APs," consider the desktop before assuming it's dead weight.
 
-Open items from the last firewall review (not yet acted on): an `Allow-NTP-from-LAN` rule
-with `src 'wan'` instead of `lan` (likely a copy/paste bug exposing router NTP to the
-whole internet); an `iot` zone with no interface actually attached to it (its forwarding
-rules are currently no-ops); Emby/Seerr WAN DNAT rules that may be redundant now that
-Traefik-Edge fronts 80/443 with real TLS; and four guest/work DNS rules that are disabled
-and point at resolvers whose reachability hasn't been confirmed.
+Open items from the last firewall review (not yet acted on): an `iot` zone with no
+interface actually attached to it (its forwarding rules are currently no-ops); Emby/Seerr
+WAN DNAT rules that may be redundant now that Traefik-Edge fronts 80/443 with real TLS;
+and four guest/work DNS rules that are disabled and point at resolvers whose reachability
+hasn't been confirmed.
 
-**Monitoring ICMP allows (open):** the `blackbox-icmp` job (see
+Resolved since that review: the `Allow-NTP-from-LAN` rule's `src 'wan'` (was a copy/paste
+bug exposing router NTP to the internet) has been corrected to `lan`.
+
+**Monitoring ICMP allows:** the `blackbox-icmp` job (see
 [monitoring.md](monitoring.md#icmp-reachability-probes-network-hosts)) pings infra hosts
-from the NAS on `lan`. Reaching the `admin` VLAN targets (router `192.168.0.1`, switch,
-APs) needs a `lan`→`admin` **ICMP** allow — the existing SNMP rule only permits UDP/161,
-so those probes fail until a rule is added. The `guest` / `work` router IPs
-(`192.168.2.1` / `192.168.3.1`) have no `lan`→`*` forward at all and stay down until one
-is; decide per target whether it's worth a rule or should be dropped from the job.
+from the NAS on `lan`. The `lan`→`admin` **ICMP** allow needed for the `admin` VLAN
+targets (router `192.168.0.1`, switch, APs) has been added — the SNMP rule only permitted
+UDP/161. The `guest` / `work` router IPs (`192.168.2.1` / `192.168.3.1`) still have no
+`lan`→`*` forward; decide per target whether it's worth a rule or should be dropped from
+the job.
 
 ## SNMP (switch/APs)
 
