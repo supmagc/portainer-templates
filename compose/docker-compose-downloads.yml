@@ -169,7 +169,7 @@ services:
       - "SPOTWEB_CRON_RETRIEVE=*/15 * * * *"
       - TZ=${APP_TIMEZONE}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost" ]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
       interval: 1m30s
       timeout: 10s
       retries: 6

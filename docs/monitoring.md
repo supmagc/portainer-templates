@@ -262,6 +262,10 @@ sitting next to "Containers with Errors"), and per-container **Health** /
 
 ## Other resolved investigations, briefly
 
+- **spotweb stuck `container_health_state=0`** (2026-09-08): the app was fine all
+  along — the compose `healthcheck` ran `curl -f`, but the `jgeusebroek/spotweb`
+  image ships only `php-curl`, not the `curl` CLI (it has `wget`). `["CMD", curl…]`
+  exits 127 every probe. Switched the test to `wget -q --spider`.
 - **Router traffic panel "triple-counting"**: `network-details.json` was summing
   aggregating interfaces (`eth0`/`wan`/`br-lan`) alongside their physical members —
   excluded now.
