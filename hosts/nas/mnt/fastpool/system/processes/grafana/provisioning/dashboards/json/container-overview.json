@@ -2,7 +2,7 @@
   "title": "Container Overview",
   "uid": "container-overview",
   "schemaVersion": 39,
-  "version": 4,
+  "version": 6,
   "editable": true,
   "tags": ["infra", "cadvisor"],
   "timezone": "",
@@ -27,9 +27,9 @@
     {
       "id": 20,
       "title": "Error Log Lines — All Containers",
-      "description": "Count of log lines matching /error/i across every container, over the dashboard's time range. Same caveat as the per-container panel: generic text match, not a structured level field.",
+      "description": "Count of log lines matching /error/i across every container, over the dashboard's time range. Generic text match, not a structured level field.",
       "type": "stat",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 4 },
       "datasource": { "type": "loki", "uid": "loki" },
       "fieldConfig": {
         "defaults": {
@@ -60,11 +60,45 @@
       ]
     },
     {
+      "id": 23,
+      "title": "Containers Unhealthy or Crashing",
+      "description": "Count of containers with container_health_state=0 or changes(container_start_time_seconds[15m])>2 — i.e. rows in the 'Needs Attention' table below.",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "count( (sum by (name) (container_health_state{name!=\"\"} == 0)) or (sum by (name) (changes(container_start_time_seconds{name!=\"\"}[15m])) > 2) ) or on() vector(0)",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
       "id": 21,
       "title": "Containers with Errors",
-      "description": "Every container with a nonzero error-line count over the dashboard's time range, worst first - row panels can't be conditionally colored, so this table stands in for 'which rows should I expand'.",
+      "description": "Every container with a nonzero error-line count over the dashboard's time range, worst first.",
       "type": "table",
-      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
       "datasource": { "type": "loki", "uid": "loki" },
       "fieldConfig": {
         "defaults": {
@@ -100,11 +134,104 @@
       ]
     },
     {
+      "id": 22,
+      "title": "Needs Attention — Unhealthy or Crashing",
+      "description": "container_health_state=0 (Health column) or changes(container_start_time_seconds[15m])>2 (Restarts column — the ContainerCrashLooping threshold). Empty = nothing wrong.",
+      "type": "table",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "color-background" } }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Container" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "auto" } }] },
+          {
+            "matcher": { "id": "byName", "options": "Health" },
+            "properties": [
+              { "id": "mappings", "value": [ { "type": "value", "options": { "0": { "text": "Unhealthy", "color": "red", "index": 0 } } } ] },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Restarts (15m)" },
+            "properties": [
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "orange", "value": null }, { "color": "red", "value": 3 } ] } },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Restarts (15m)", "desc": true }]
+      },
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "name", "mode": "outer" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Time 1": true, "Time 2": true },
+            "renameByName": {
+              "name": "Container",
+              "Value #A": "Health",
+              "Value #B": "Restarts (15m)",
+              "A": "Health",
+              "B": "Restarts (15m)"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "expr": "sum by (name) (container_health_state{name!=\"\"} == 0)",
+          "instant": true,
+          "format": "table",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (name) (changes(container_start_time_seconds{name!=\"\"}[15m])) > 2",
+          "instant": true,
+          "format": "table",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "title": "Container Health",
+      "description": "cAdvisor container_health_state: -1 = image ships no HEALTHCHECK, 0 = unhealthy or still starting, 1 = healthy. See docs/monitoring.md → 'Container health alerting'.",
+      "type": "piechart",
+      "gridPos": { "x": 0, "y": 12, "w": 8, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": {} },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Healthy" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "Unhealthy" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
+          { "matcher": { "id": "byName", "options": "No healthcheck" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#5A5A5A" } }] }
+        ]
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "pieType": "pie",
+        "tooltip": { "mode": "single", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] },
+        "displayLabels": ["percent"]
+      },
+      "targets": [
+        { "expr": "count(container_health_state{name!=\"\"} == 1) or on() vector(0)", "legendFormat": "Healthy", "instant": true, "refId": "A" },
+        { "expr": "count(container_health_state{name!=\"\"} == 0) or on() vector(0)", "legendFormat": "Unhealthy", "instant": true, "refId": "B" },
+        { "expr": "count(container_health_state{name!=\"\"} == -1) or on() vector(0)", "legendFormat": "No healthcheck", "instant": true, "refId": "C" }
+      ]
+    },
+    {
       "id": 10,
       "title": "CPU Spend by Container",
       "description": "Top 10 containers by CPU usage",
       "type": "piechart",
-      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 9 },
+      "gridPos": { "x": 8, "y": 12, "w": 8, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": {} },
@@ -131,7 +258,7 @@
       "title": "Memory Spend by Container",
       "description": "Top 10 containers by memory usage",
       "type": "piechart",
-      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 9 },
+      "gridPos": { "x": 16, "y": 12, "w": 8, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "unit": "bytes", "custom": {} },
@@ -245,11 +372,93 @@
           ]
         },
         {
+          "id": 7,
+          "title": "Health",
+          "description": "cAdvisor container_health_state: -1 = no HEALTHCHECK in the image, 0 = unhealthy or still starting, 1 = healthy. ContainerUnhealthy alerts on 0 for 10m.",
+          "type": "stat",
+          "gridPos": { "x": 18, "y": 0, "w": 3, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "-1": { "text": "No check", "index": 0 },
+                    "0": { "text": "Unhealthy", "index": 1 },
+                    "1": { "text": "Healthy", "index": 2 }
+                  }
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "#5A5A5A", "value": null },
+                  { "color": "red", "value": 0 },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "expr": "container_health_state{name=\"$container\"}",
+              "instant": true,
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "title": "Restarts (15m)",
+          "description": "changes(container_start_time_seconds[15m]) - the signal ContainerCrashLooping alerts on (it fires at >2).",
+          "type": "stat",
+          "gridPos": { "x": 21, "y": 0, "w": 3, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "red", "value": 3 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "changes(container_start_time_seconds{name=\"$container\"}[15m])",
+              "instant": true,
+              "refId": "A"
+            }
+          ]
+        },
+        {
           "id": 5,
           "title": "Uptime",
-          "description": "Time since the container's last (re)start - container_start_time_seconds from cAdvisor, same metric ContainerCrashLooping alerts on.",
+          "description": "Time since the container's last (re)start - container_start_time_seconds from cAdvisor.",
           "type": "stat",
-          "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+          "gridPos": { "x": 18, "y": 4, "w": 3, "h": 4 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "fieldConfig": {
             "defaults": { "unit": "dtdhms", "color": { "mode": "fixed", "fixedColor": "green" } },
@@ -272,9 +481,9 @@
         {
           "id": 6,
           "title": "Error Log Lines",
-          "description": "Count of log lines matching /error/i over the dashboard's time range - generic text match across all containers' raw output, not a structured level field. Source: Loki, via promtail's docker_sd_configs job.",
+          "description": "Count of log lines matching /error/i over the dashboard's time range - generic text match, not a structured level field. Source: Loki.",
           "type": "stat",
-          "gridPos": { "x": 18, "y": 4, "w": 6, "h": 4 },
+          "gridPos": { "x": 21, "y": 4, "w": 3, "h": 4 },
           "datasource": { "type": "loki", "uid": "loki" },
           "fieldConfig": {
             "defaults": {

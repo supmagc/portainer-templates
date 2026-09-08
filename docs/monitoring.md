@@ -232,6 +232,19 @@ check the metric still exists before trusting the silence. The durable fix, if i
 comes to that, is a `docker inspect`-based textfile-collector script in the
 `cron-wrapper.sh` mould rather than depending on the forked image.
 
+**"Only spotweb shows a health status" was a misread**, not a coverage gap
+(investigated 2026-09-08). Roughly half the fleet reports `1` — the `-1`s are
+just third-party images with no `HEALTHCHECK`; the LinuxServer.io images all
+bundle one. spotweb is simply the only container sitting at `0`, so it's the only
+row `ContainerUnhealthy` (or any "not healthy" filter) has to show. It has been
+continuously unhealthy since before 2026-09-07 — the alert is doing its job; the
+container or its healthcheck is genuinely broken. The `container-overview`
+dashboard now surfaces the full picture: a **Container Health** piechart
+(healthy / unhealthy / no-healthcheck counts), a **Needs Attention** table
+(`container_health_state=0` or `changes(container_start_time_seconds[15m])>2`,
+sitting next to "Containers with Errors"), and per-container **Health** /
+**Restarts (15m)** stat tiles in each repeated row.
+
 ## Other resolved investigations, briefly
 
 - **Router traffic panel "triple-counting"**: `network-details.json` was summing

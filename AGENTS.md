@@ -59,6 +59,18 @@ anything about this specific running stack. Multiple earlier guesses in this pro
 wrong and caught only this way — treat verification as the default step, not a fallback
 for when something looks unusual.
 
+## Comments in infra/config files
+
+Keep inline comments in config/infra files (compose files, `prometheus/config.yml`,
+`rules.yml`, dashboards, scripts) to a minimum. A comment there earns its place only by
+being *actionable*: a value the user needs to adjust, an optional setting worth toggling,
+a `VERIFY:` / `TODO:` for something unconfirmed, or a real footgun for whoever next edits
+that line. Explanatory background — why a decision was made, how a mechanism works, what
+was investigated — goes in `docs/`, not mixed into the configuration. If you're writing
+more than a line or two of prose into a config file, move it to the relevant `docs/` file
+and leave at most a one-line pointer. The user does not want permanent documentation
+living alongside the config.
+
 ## Dashboard/table-panel pattern
 
 When a table panel combines more than one Prometheus query into one row per entity, use
