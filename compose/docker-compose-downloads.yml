@@ -139,6 +139,50 @@ services:
       retries: 6
       start_period: 30s
 
+  bitmagnet:
+    image: ghcr.io/bitmagnet-io/bitmagnet:latest
+    container_name: bitmagnet
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: unless-stopped
+    user: ${APP_USER}:${APP_GROUP}
+    command: ["worker", "run", "--all"]
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.bitmagnet-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.bitmagnet.rule=Host(`bitmagnet.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.bitmagnet.entrypoints=web"
+      - "traefik.http.routers.bitmagnet.middlewares=bitmagnet-https-redirect"
+      - "traefik.http.routers.bitmagnet-secure.rule=Host(`bitmagnet.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.bitmagnet-secure.entrypoints=web-secure"
+      - "traefik.http.routers.bitmagnet-secure.tls=true"
+      - "traefik.http.routers.bitmagnet-secure.tls.certresolver=stepca"
+      - "traefik.http.services.bitmagnet.loadbalancer.server.port=3333"
+    ports:
+      - ${NETWORK_INTERFACE}:3333:3333/tcp
+      - ${NETWORK_INTERFACE}:3334:3334/tcp
+      - ${NETWORK_INTERFACE}:3334:3334/udp
+    volumes:
+      - /mnt/fastpool/system/downloads/bitmagnet:/bitmagnet
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - HOME=/bitmagnet   # image is upstream-root; relocate its ~/.config + ~/.local off /root
+      - LOG_FILE_ROTATOR_ENABLED=true
+      - POSTGRES_HOST=postgres
+      - POSTGRES_NAME=bitmagnet
+      - POSTGRES_USER=bitmagnet
+      - POSTGRES_PASSWORD=${BITMAGNET_DB_PASSWORD}
+      - TMDB_API_KEY=${TMDB_API_KEY}   # optional, free key from themoviedb.org; improves classification
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3333/"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
   spotweb:
     image: jgeusebroek/spotweb:latest
     container_name: spotweb

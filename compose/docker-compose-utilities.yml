@@ -7,21 +7,6 @@ networks:
     driver: bridge
 
 services:
-  flaresolverr:
-    image: "flaresolverr/flaresolverr:latest"
-    container_name: flaresolverr
-    networks:
-      - default
-    pull_policy: missing
-    restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    environment:
-      - LOG_LEVEL=info
-      - LOG_HTML=false
-      - CAPTCHA_SOLVER=none
-      - TZ=${APP_TIMEZONE}
-
   chromedp:
     image: chromedp/headless-shell:latest
     container_name: chromedp
@@ -104,6 +89,35 @@ services:
       DB_DUMP_TARGET: /backup
       TZ: ${APP_TIMEZONE}
     command: dump
+
+  postgres:
+    image: ghcr.io/immich-app/postgres:17-vectorchord1.1.1-pgvector0.8.5
+    container_name: postgres
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    user: ${APP_USER}:${APP_GROUP}
+    shm_size: 1gb
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    ports:
+      - ${NETWORK_INTERFACE}:5432:5432/tcp
+    secrets:
+      - postgres-pass
+    volumes:
+      - /mnt/fastpool/system/processes/postgres:/var/lib/postgresql/data
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres-pass
+      - POSTGRES_INITDB_ARGS=--data-checksums
+      - POSTGRES_USER=postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      start_period: 20s
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   phpmyadmin:
     image: phpmyadmin:latest
@@ -280,3 +294,5 @@ services:
 secrets:
   mariadb-backup-pass:
     file: /mnt/fastpool/system/processes/secrets/mariadb-backup-pass.txt
+  postgres-pass:
+    file: /mnt/fastpool/system/processes/secrets/postgres-pass.txt
