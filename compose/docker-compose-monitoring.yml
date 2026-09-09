@@ -277,6 +277,25 @@ services:
       - "--collect.info_schema.innodb_metrics"
       - "--collect.global_status"
 
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    secrets:
+      - postgres-exporter-pass
+    environment:
+      - DATA_SOURCE_URI=postgres:5432/postgres?sslmode=disable
+      - DATA_SOURCE_USER=postgres_exporter
+      - DATA_SOURCE_PASS_FILE=/run/secrets/postgres-exporter-pass
+    command:
+      - "--collector.database"   # per-db pg_database_size_bytes
+
   exportarr-sonarr:
     image: ghcr.io/onedr0p/exportarr:latest
     container_name: exportarr-sonarr
@@ -418,3 +437,5 @@ services:
 secrets:
   mysqld-exporter-cnf:
     file: /mnt/fastpool/system/processes/secrets/mysqld-exporter.cnf
+  postgres-exporter-pass:
+    file: /mnt/fastpool/system/processes/secrets/postgres-exporter-pass.txt

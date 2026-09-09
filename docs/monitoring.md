@@ -260,6 +260,32 @@ dashboard now surfaces the full picture: a **Container Health** piechart
 sitting next to "Containers with Errors"), and per-container **Health** /
 **Restarts (15m)** stat tiles in each repeated row.
 
+## PostgreSQL / BitMagnet / Spotweb dashboard data
+
+Added 2026-09-09 alongside the BitMagnet indexer and its shared Postgres cluster.
+
+- **PostgreSQL** (`utilities-overview`, new row): `postgres-exporter` in the
+  `monitoring` stack, on `utilities_default`, pointed at the shared `postgres` (utilities
+  stack) via `DATA_SOURCE_URI` + `DATA_SOURCE_PASS_FILE` (secret `postgres-exporter-pass`).
+  Needs a dedicated login role — `CREATE ROLE postgres_exporter LOGIN PASSWORD '…'; GRANT
+  pg_monitor TO postgres_exporter;` — run once by hand (same as BitMagnet's own role).
+  `--collector.database` is set explicitly so `pg_database_size_bytes` (the per-DB
+  "Databases" table + BitMagnet's "Index Size") is populated; without it that collector
+  can be off and those panels read empty.
+- **BitMagnet** (`multimedia-overview`, new row): native `/metrics` on `:3333` (the
+  `prometheus` component of its `http_server`), scraped directly as `job=bitmagnet`.
+  BitMagnet exposes only runtime/HTTP metrics there — **torrent count and DHT crawl rate
+  live in its GraphQL API, not Prometheus** — so the section tracks up/health/resources
+  plus `pg_database_size_bytes{datname="bitmagnet"}` as the index-growth proxy. If
+  `bitmagnet_*` counters do show up on the live endpoint, add crawl panels then.
+- **Spotweb** has no exporter and never will; its panels read the `spotweb` schema
+  through `mysqld-exporter` (`--collect.info_schema.tables` was already on):
+  `mysql_info_schema_table_rows{schema="spotweb",table="spots"}` is the spot count,
+  `mysql_info_schema_table_size{…,component=~"data_length|index_length"}` the DB size.
+- **MariaDB "Databases by Size" table**: same `mysql_info_schema_table_*` metrics, summed
+  `by (schema)`; `component="data_free"` surfaced as the "Reclaimable" column
+  (fragmentation / pending `OPTIMIZE TABLE`).
+
 ## Other resolved investigations, briefly
 
 - **spotweb stuck `container_health_state=0`** (2026-09-08): the app was fine all

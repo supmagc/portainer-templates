@@ -38,6 +38,10 @@ scrape_configs:
     scrape_interval: 30s
     static_configs: [{targets: ["mysqld-exporter:9104"]}]
 
+  - job_name: postgres
+    scrape_interval: 30s
+    static_configs: [{targets: ["postgres-exporter:9187"]}]
+
   - job_name: nextcloud
     scrape_interval: 60s
     static_configs: [{targets: ["nextcloud-exporter:9205"]}]   # VERIFY default port
@@ -53,6 +57,10 @@ scrape_configs:
   - job_name: qbittorrent
     scrape_interval: 60s
     static_configs: [{targets: ["qbittorrent-exporter:8000"]}]
+
+  - job_name: bitmagnet
+    scrape_interval: 30s
+    static_configs: [{targets: ["bitmagnet:3333"]}]   # native /metrics (http_server 'prometheus' component)
 
   - job_name: exportarr
     scrape_interval: 60s

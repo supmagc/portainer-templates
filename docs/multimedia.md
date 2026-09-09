@@ -9,7 +9,7 @@ the "why" for these lives in the compose files themselves and in
 | Stack | Services |
 |---|---|
 | `multimedia` | Emby, Sonarr, Radarr, Lidarr, Bazarr, Organizr, Seerr |
-| `downloads` | SABnzbd (+ cleanup sidecar), qBittorrent, Prowlarr, Spotweb |
+| `downloads` | SABnzbd (+ cleanup sidecar), qBittorrent, Prowlarr, Spotweb, BitMagnet |
 | `extras` | stash, namer, whisparr |
 
 tdarr runs in the `utilities` stack, not `multimedia`.
@@ -27,3 +27,7 @@ tdarr runs in the `utilities` stack, not `multimedia`.
   via blackbox, not a speculative exporter deployment.
 - **Emby / SABnzbd / qBittorrent** each have a dedicated exporter in the `monitoring`
   stack (alongside the nextcloud one).
+- **BitMagnet / Spotweb / PostgreSQL** dashboard wiring — see
+  [monitoring.md](monitoring.md#postgresql--bitmagnet--spotweb-dashboard-data). BitMagnet
+  self-exposes `/metrics`; Spotweb has no exporter (read via `mysqld-exporter`); Postgres
+  gets a new `postgres-exporter`.
