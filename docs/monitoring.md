@@ -49,33 +49,70 @@ repo** — always exclude the `__name__` field(s) it exposes (they're normally h
 ## The `job` / `exported_job` label collision
 
 If a textfile-collector metric uses a label literally named `job` (as `cron-wrapper.sh`'s
-output does — `cron_job_last_exit_code{job="<task-name>", ...}`), it collides with
+original output did — `cron_job_last_exit_code{job="<task-name>", ...}`), it collides with
 Prometheus's own scrape-config meta-label of the same name (`job: node` for the node
 exporter target). Prometheus's default collision handling **keeps its own value and
-renames the metric's own label to `exported_job`** — so every cron-job metric ends up with
-a useless constant `job="node"` and the real per-task identity lives in `exported_job`
+renames the metric's own label to `exported_job`** — so every cron-job metric ended up with
+a useless constant `job="node"` and the real per-task identity lived in `exported_job`
 instead. This bit the NAS dashboard's Cron Jobs table (it was joining on the wrong,
 constant field) and the matching Grafana alert-rule annotations (`{{ $labels.job }}` was
-always "node"). Fixed by joining/templating on `exported_job`. **This isn't a one-off
-bug** — it'll recur for any future textfile-collector metric that names a label `job`;
-name it something else (`task`, `dataset`, `pool`, ...) to avoid it entirely.
+always "node"). **This isn't a one-off bug** — it recurs for any textfile-collector metric
+that names a label `job`; name it something else instead. The unified `scheduled_job_*`
+family below (see "Scheduled jobs (unified)") was designed around this from the start —
+its job-identity label is called `name`, not `job`, so it never hits the collision at all.
 
-## TrueNAS-native scheduled-task visibility
+## Scheduled jobs (unified)
 
-Two categories of TrueNAS-scheduled work needed monitoring, neither of which is a Linux
-cron job:
-- **Cron Jobs** (Settings → Tasks → Cron Jobs) genuinely are plain `/etc/cron.d/middlewared`
-  crontab entries — `cron-wrapper.sh` wraps the actual command, timing it and recording
-  exit code/duration/last-run/last-success as textfile-collector metrics.
-- **Periodic Snapshot Tasks** and **Cloud Sync Tasks** are middleware-scheduled
-  (zettarepl), not cron at all — there's no command of ours to wrap. Instead,
-  `snapshot-tasks-metrics.sh` / `cloudsync-tasks-metrics.sh` poll `midclt`, TrueNAS's local
-  CLI (talks to middleware over a Unix socket as root — no API token, no network exposure)
-  and translate `pool.snapshottask.query` / `cloudsync.query` output into the same textfile
-  format. **`cloudsync.query` includes each task's `credentials` block with real provider
-  secrets in plaintext (e.g. a Backblaze B2 key) — the parser must never read that field.**
-  It currently only touches `id`/`description`/`enabled`/`job.state`/`job.time_finished`;
-  keep it that way if this script is ever extended.
+Two kinds of scheduled-job source exist in this repo, and each is monitored the way that
+fits it best — but both feed the *same* two Grafana alert rules (`ScheduledJobStale`,
+`ScheduledJobFailed` in `grafana/provisioning/alerting/rules.yml`), so there's still only
+one alert to know about regardless of source:
+
+- **No standard exporter metric exists** (NAS cron jobs, TrueNAS's Periodic Snapshot/Cloud
+  Sync Tasks) — these write into a shared textfile-collector metric family, described below.
+  This is the only option here; nothing exposes TrueNAS cron/task state natively.
+- **A standard exporter metric already exists** (openHABian's systemd-timer backups, via
+  node_exporter's own `--collector.systemd`) — the alert rules query that metric directly.
+  No custom script, no textfile collector, no new metric family — see "openHABian host
+  monitoring" below for exactly which native metrics and how they're read.
+
+Adding a new source later: if nothing exposes it, write the `scheduled_job_*` family below
+(no rule changes needed, it's already wired in). If it's already exposed by a standard
+exporter, add an `or`-ed branch to both rules' PromQL instead (openHABian's branches are the
+template for this).
+
+The shared `scheduled_job_*` family (custom-script sources only):
+
+- `scheduled_job_last_run_timestamp_seconds{source, name}`
+- `scheduled_job_last_exit_code{source, name}` — 0 = success, nonzero = failure (exact
+  value beyond that is source-dependent, e.g. a real shell exit code for cron jobs vs. a
+  generic 1 for anything that only reports a boolean success/fail)
+- `scheduled_job_expected_interval_seconds{source, name}` — the per-job **timewindow
+  override** `ScheduledJobStale` compares `time() - last_run` against. Each source decides
+  its own: `cron-wrapper.sh` takes it as a required argument from the TrueNAS Cron Job's
+  command line, the TrueNAS-task scripts estimate it from the task's own schedule (falling
+  back to a conservative 8 days if the schedule shape isn't recognized).
+- `scheduled_job_enabled{source, name}` — both alert rules `and` against `== 1`, so a
+  disabled TrueNAS task never fires either one.
+
+Labels are deliberately just `{source, name}` — see "The `job`/`exported_job` label
+collision" above for why `name` and not `job`.
+
+Sources as of this writing:
+- **`nas-cron`** — `cron-wrapper.sh` wraps a TrueNAS Cron Job's actual command, timing it
+  and recording exit code/duration/last-run as `cron_<job-name>.prom`. Only `zpool-metrics`
+  is wrapped so far.
+- **`nas-snapshot`** / **`nas-cloudsync`** — Periodic Snapshot Tasks and Cloud Sync Tasks
+  are middleware-scheduled (zettarepl), not cron at all — there's no command of ours to
+  wrap. Instead, `snapshot-tasks-metrics.sh` / `cloudsync-tasks-metrics.sh` poll `midclt`,
+  TrueNAS's local CLI (talks to middleware over a Unix socket as root — no API token, no
+  network exposure) and translate `pool.snapshottask.query` / `cloudsync.query` output into
+  both the original per-source `snapshot_task_*`/`cloudsync_task_*` metrics (kept for the
+  dashboard's state-string column) and the shared `scheduled_job_*` family. **`cloudsync.query`
+  includes each task's `credentials` block with real provider secrets in plaintext (e.g. a
+  Backblaze B2 key) — the parser must never read that field.** It currently only touches
+  `id`/`description`/`enabled`/`schedule`/`job.state`/`job.time_finished`; keep it that way
+  if this script is ever extended.
 - A third-party TrueNAS API exporter (`alexlmiller/truenas-grafana`, needs an API token)
   was considered and explicitly rejected in favor of the local `midclt` approach — no
   externally-facing token to manage, no extra moving part.
@@ -85,15 +122,43 @@ cron job:
   TrueNAS cron (must run as **root** — `zpool`/`zfs` CLI calls fail for the unprivileged
   `nas_processes` user; the script `chown`s its output back to `nas_processes` afterward so
   node-exporter's non-root container can still read it through the read-only bind mount).
+  `zpool-metrics.sh` itself is a data script, not a scheduled-job source — its own
+  execution is what `nas-cron`/`zpool-metrics` monitors, via the `cron-wrapper.sh` that
+  runs it.
 
 ## openHABian host monitoring
 
 The `openhabian` host runs natively on a Raspberry Pi — no Docker. `node_exporter` and
 Promtail are both static Go binaries installed by hand and run as systemd units (see
 `hosts/openhabian/etc/`). openHABian's own scheduled backups (Amanda-based) are **systemd
-timers** (`amdump-*.timer`, `amandaBackupDB.timer`, `sdrawcopy.timer`, `sdrsync.timer`),
-not cron — so they're visible for free via `node_exporter --collector.systemd`, no wrapper
-script needed (unlike TrueNAS, which has no systemd-timer option for its scheduled tasks).
+timers** (`amdump-openhab-dir.timer`, `amandaBackupDB.timer`) plus a daily `acme-renew.timer`
+for the Caddy TLS cert — not cron — so their raw state is visible for free via
+`node_exporter --collector.systemd` (scoped via `--collector.systemd.unit-include`, see that
+unit file). `sdrawcopy`/`sdrsync` (SD-card mirroring, see `99-usb-drives.rules`) have **no
+timer at all** — they're started by hand when the SD card reader is plugged in, covered by
+`--collector.systemd` the same way but with no fixed schedule to be "stale" against.
+
+`ScheduledJobStale`/`ScheduledJobFailed` (see "Scheduled jobs (unified)" above) read that
+native state directly — no wrapper script, no textfile collector, just two extra `or`-ed
+PromQL branches in `rules.yml`:
+- `node_systemd_timer_last_trigger_seconds{name="<unit>.timer"}` — when the timer last
+  fired. `ScheduledJobStale`'s openHABian branches compare `time() - this` against a
+  threshold hardcoded per unit in the alert query (93600s/26h for the two 00:xx/01:xx daily
+  timers, 97200s/27h for `acme-renew` given its 03:00 + up-to-30m `RandomizedDelaySec`) —
+  there's no metric to hang a per-job override on without a script, so the threshold lives
+  in the alert instead; retune it there if a `.timer` file's schedule ever changes.
+- `node_systemd_unit_state{name="<unit>.service", state="failed"}` — 1 if the unit's last
+  run ended in the `failed` state (systemd keeps this until the next run, same persistence
+  a cron exit code needs). `ScheduledJobFailed`'s openHABian branch reads this directly.
+
+Both alert branches inject a synthetic `source` label via `label_replace()` so annotations
+read the same way regardless of source: **`openhabian-timer`** for the three real timer
+units above, and **`openhabian-manual`** for `sdrawcopy`/`sdrsync` — SD-card mirroring
+started by hand (see `99-usb-drives.rules`), which has no `.timer` unit and so only ever
+appears in the `ScheduledJobFailed` branch (there's no "should have run by now" for
+something with no schedule). Kept as a separate source value rather than folded into
+`openhabian-timer` specifically so it reads as a different *kind* of job at a glance.
+
 See [backups.md](backups.md) for what those backup units actually do. openHABian also
 bundles a local Grafana (port 3000, native `/metrics`) and InfluxDB **1.x** (port 8086 —
 no native Prometheus endpoint; that's a 2.x-only feature). Both are covered by blackbox

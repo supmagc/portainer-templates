@@ -20,8 +20,10 @@
 #      have). Schedule: */5 * * * *. Command - go through cron-wrapper.sh
 #      rather than calling this script directly, so Prometheus can tell if
 #      this job stops running or starts failing (see cron-wrapper.sh and
-#      CronJobStale/CronJobFailed in grafana/provisioning/alerting/rules.yml):
-#        /path/to/cron-wrapper.sh zpool-metrics -- /path/to/zpool-metrics.sh
+#      ScheduledJobStale/ScheduledJobFailed in grafana/provisioning/alerting/rules.yml).
+#      1800 below is the expected-interval override (30m) - generous slack
+#      over the 5m schedule:
+#        /path/to/cron-wrapper.sh zpool-metrics 1800 -- /path/to/zpool-metrics.sh
 #   4. mount the textfile dir read-only into node-exporter and add
 #      --collector.textfile.directory=/textfile (see docker-compose-monitoring.yml)
 #
