@@ -80,6 +80,15 @@ else
 fi
 
 {
+  # HELP text for scheduled_job_last_run_timestamp_seconds, last_exit_code,
+  # expected_interval_seconds and enabled below must stay byte-identical to
+  # the same metric names in snapshot-tasks-metrics.sh /
+  # cloudsync-tasks-metrics.sh - node-exporter's textfile collector drops a
+  # whole metric family scrape-wide if any two files declare different HELP
+  # text for the same name (confirmed live: this exact mismatch silently
+  # dropped scheduled_job_* for weeks - see git history). No such constraint
+  # on scheduled_job_last_success_timestamp_seconds / last_run_duration_seconds
+  # below - only cron-wrapper.sh writes those.
   echo "# HELP scheduled_job_last_run_timestamp_seconds Unix timestamp of the last time this job ran, regardless of outcome."
   echo "# TYPE scheduled_job_last_run_timestamp_seconds gauge"
   echo "scheduled_job_last_run_timestamp_seconds{source=\"${SOURCE}\", name=\"${JOB_NAME}\"} ${END_TS}"
@@ -92,10 +101,12 @@ fi
   echo "# HELP scheduled_job_last_run_duration_seconds How long the most recent run took, in seconds."
   echo "# TYPE scheduled_job_last_run_duration_seconds gauge"
   echo "scheduled_job_last_run_duration_seconds{source=\"${SOURCE}\", name=\"${JOB_NAME}\"} ${DURATION}"
-  echo "# HELP scheduled_job_expected_interval_seconds Caller-supplied 'how often should this run' - the per-job timewindow override for ScheduledJobStale."
+  echo "# HELP scheduled_job_expected_interval_seconds The per-job timewindow override for ScheduledJobStale - how often this job is expected to run, in seconds."
   echo "# TYPE scheduled_job_expected_interval_seconds gauge"
   echo "scheduled_job_expected_interval_seconds{source=\"${SOURCE}\", name=\"${JOB_NAME}\"} ${EXPECTED_INTERVAL}"
-  echo "# HELP scheduled_job_enabled Always 1 here - a wrapped cron job only ever writes this file while it's actually being run."
+  # Value below is always 1 - a wrapped cron job only ever writes this file
+  # while it's actually being run.
+  echo "# HELP scheduled_job_enabled Whether this scheduled job is enabled (1) or disabled (0)."
   echo "# TYPE scheduled_job_enabled gauge"
   echo "scheduled_job_enabled{source=\"${SOURCE}\", name=\"${JOB_NAME}\"} 1"
 } > "$TMP_FILE"
