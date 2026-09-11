@@ -23,7 +23,7 @@
 #      ScheduledJobStale/ScheduledJobFailed in grafana/provisioning/alerting/rules.yml).
 #      1800 below is the expected-interval override (30m) - generous slack
 #      over the 5m schedule:
-#        /path/to/cron-wrapper.sh zpool-metrics 1800 -- /path/to/zpool-metrics.sh
+#        /path/to/cron-wrapper.sh 1800 -- /path/to/zpool-metrics.sh
 #   4. mount the textfile dir read-only into node-exporter and add
 #      --collector.textfile.directory=/textfile (see docker-compose-monitoring.yml)
 #

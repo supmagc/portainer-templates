@@ -214,7 +214,7 @@
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "source" }, "properties": [{ "id": "displayName", "value": "Source" }] },
+          { "matcher": { "id": "byName", "options": "source 1" }, "properties": [{ "id": "displayName", "value": "Source" }] },
           { "matcher": { "id": "byName", "options": "name" }, "properties": [{ "id": "displayName", "value": "Job" }] },
           { "matcher": { "id": "byName", "options": "Last Run" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] },
           { "matcher": { "id": "byName", "options": "Exit Code" }, "properties": [{ "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
@@ -224,8 +224,14 @@
       },
       "options": { "showHeader": true },
       "transformations": [
-        { "id": "merge", "options": {} },
-        { "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "__name__": true, "__name__1": true, "__name__2": true, "__name__3": true }, "renameByName": { "Value #A": "Last Run", "Value #B": "Exit Code", "Value #C": "Expected Interval", "Value #D": "Enabled" } } }
+        { "id": "joinByField", "options": { "byField": "name", "mode": "outer" } },
+        { "id": "organize", "options": { "excludeByName": {
+            "Time": true, "Time 1": true, "Time 2": true, "Time 3": true, "Time 4": true,
+            "job": true, "job 1": true, "job 2": true, "job 3": true, "job 4": true,
+            "instance": true, "instance 1": true, "instance 2": true, "instance 3": true, "instance 4": true,
+            "__name__": true, "__name__ 1": true, "__name__ 2": true, "__name__ 3": true, "__name__ 4": true,
+            "source 2": true, "source 3": true, "source 4": true
+          }, "renameByName": { "Value #A": "Last Run", "Value #B": "Exit Code", "Value #C": "Expected Interval", "Value #D": "Enabled" } } }
       ],
       "targets": [
         { "expr": "scheduled_job_last_run_timestamp_seconds * 1000", "instant": true, "format": "table", "refId": "A" },

@@ -16,26 +16,34 @@
 #
 # Usage in a TrueNAS Cron Job's Command field - wrap the existing command,
 # don't replace it:
-#   /path/to/cron-wrapper.sh <job-name> <expected-interval-seconds> -- <actual command and args...>
+#   /path/to/cron-wrapper.sh <expected-interval-seconds> -- <actual command and args...>
+#
+# JOB_NAME is derived from the wrapped command's own basename (minus .sh) -
+# not a separate argument - so it can't drift out of sync with what's
+# actually being run (a mismatched/missing name argument silently corrupted
+# this job's whole metrics file once already - see git history).
 #
 # Example (see zpool-metrics.sh's own header for the full cron setup):
-#   /mnt/fastpool/system/scripts/cron-wrapper.sh zpool-metrics 1800 -- /mnt/fastpool/system/scripts/zpool-metrics.sh
+#   /mnt/fastpool/system/scripts/cron-wrapper.sh 1800 -- /mnt/fastpool/system/scripts/zpool-metrics.sh
 #
 # Each wrapped job gets its own file (cron_<job-name>.prom) rather than a
 # shared one, so concurrent cron jobs never race on the same file - matches
 # node-exporter's textfile collector, which merges every *.prom file in the
 # directory automatically, and mirrors zpool-metrics.sh's own atomic
-# write-then-rename pattern.
+# write-then-rename pattern. Wrapping the same script from two different cron
+# jobs would collide on this file - give each wrapped script its own path if
+# that's ever needed.
 #
 # Install: chmod +x this file. It has no cron entry of its own - it wraps
 # whatever job's command line you point it at.
 
 set -eu
 
-JOB_NAME="$1"
-EXPECTED_INTERVAL="$2"
-shift 2
+EXPECTED_INTERVAL="$1"
+shift
 if [ "${1:-}" = "--" ]; then shift; fi
+JOB_NAME=$(basename "$1")
+JOB_NAME="${JOB_NAME%.sh}"
 
 OUT_DIR="/mnt/fastpool/system/processes/node-exporter/textfile"
 OUT_FILE="${OUT_DIR}/cron_${JOB_NAME}.prom"

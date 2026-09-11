@@ -28,7 +28,7 @@
 #
 # Install: chmod +x this file (cron-wrapper.sh must be alongside it), then a
 # TrueNAS Cron Job running as ROOT (midclt needs the local middleware socket):
-#   Command:  /mnt/fastpool/system/scripts/cron-wrapper.sh snapshot-tasks 1800 -- /mnt/fastpool/system/scripts/snapshot-tasks-metrics.sh
+#   Command:  /mnt/fastpool/system/scripts/cron-wrapper.sh 1800 -- /mnt/fastpool/system/scripts/snapshot-tasks-metrics.sh
 #   Schedule: */15 * * * *  (these tasks run far less often than that)
 
 set -eu

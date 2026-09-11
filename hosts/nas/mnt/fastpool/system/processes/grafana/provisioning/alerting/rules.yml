@@ -579,7 +579,7 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: ((time() - scheduled_job_last_run_timestamp_seconds) > scheduled_job_expected_interval_seconds and scheduled_job_enabled == 1) or label_replace(label_replace(time() - node_systemd_timer_last_trigger_seconds{name=~"(amdump-openhab-dir|amandaBackupDB)\.timer"} > 93600, "source", "openhabian-timer", "instance", ".*"), "name", "$1", "name", "(.+)\.timer") or label_replace(label_replace(time() - node_systemd_timer_last_trigger_seconds{name="acme-renew.timer"} > 97200, "source", "openhabian-timer", "instance", ".*"), "name", "$1", "name", "(.+)\.timer")
+              expr: ((time() - scheduled_job_last_run_timestamp_seconds) > scheduled_job_expected_interval_seconds and scheduled_job_enabled == 1) or label_replace(label_replace(time() - node_systemd_timer_last_trigger_seconds{name=~`(amdump-openhab-dir|amandaBackupDB)\.timer`} > 93600, "source", "openhabian-timer", "instance", ".*"), "name", "$1", "name", `(.+)\.timer`) or label_replace(label_replace(time() - node_systemd_timer_last_trigger_seconds{name="acme-renew.timer"} > 97200, "source", "openhabian-timer", "instance", ".*"), "name", "$1", "name", `(.+)\.timer`)
               instant: true
               refId: A
           - refId: B
@@ -623,7 +623,7 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: (scheduled_job_last_exit_code and scheduled_job_enabled == 1) or label_replace(label_replace(node_systemd_unit_state{name=~"(amdump-openhab-dir|amandaBackupDB|acme-renew)\.service", state="failed"}, "source", "openhabian-timer", "instance", ".*"), "name", "$1", "name", "(.+)\.service") or label_replace(label_replace(node_systemd_unit_state{name=~"(sdrawcopy|sdrsync)\.service", state="failed"}, "source", "openhabian-manual", "instance", ".*"), "name", "$1", "name", "(.+)\.service")
+              expr: (scheduled_job_last_exit_code and scheduled_job_enabled == 1) or label_replace(label_replace(node_systemd_unit_state{name=~`(amdump-openhab-dir|amandaBackupDB|acme-renew)\.service`, state="failed"}, "source", "openhabian-timer", "instance", ".*"), "name", "$1", "name", `(.+)\.service`) or label_replace(label_replace(node_systemd_unit_state{name=~`(sdrawcopy|sdrsync)\.service`, state="failed"}, "source", "openhabian-manual", "instance", ".*"), "name", "$1", "name", `(.+)\.service`)
               instant: true
               refId: A
           - refId: B
