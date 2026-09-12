@@ -527,12 +527,10 @@ groups:
       # snapshot-tasks-metrics.sh (source="nas-snapshot"),
       # cloudsync-tasks-metrics.sh (source="nas-cloudsync"), and
       # systemd-tasks-metrics.sh on openHABian (source="openhabian-timer" for
-      # its 3 real timers, "openhabian-manual" for sdrawcopy/sdrsync, which
-      # have no timer and so never get an expected_interval_seconds sample -
-      # naturally excluded from ScheduledJobStale, same as a TrueNAS task
-      # that's never completed a run). One textfile-collector idiom for every
-      # source means adding a new one is always just "write the
-      # scheduled_job_* family", no rule changes here.
+      # all 5 of its systemd-timer-driven jobs - amdump-openhab-dir,
+      # amandaBackupDB, acme-renew, sdrawcopy, sdrsync). One textfile-collector
+      # idiom for every source means adding a new one is always just "write
+      # the scheduled_job_* family", no rule changes here.
       #
       # Labels are deliberately just {source, name} - no label here is named
       # "job", which would collide with Prometheus's own scrape-config label

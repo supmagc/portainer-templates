@@ -66,6 +66,23 @@ scrape_configs:
           format: '2006-01-02 15:04:05'
           location: Europe/Brussels
 
+  - job_name: habapp_events
+    static_configs:
+      - targets: [localhost]
+        labels: {job: habapp_events, __path__: /var/log/openhab/HABApp_events.log}
+    pipeline_stages:
+      - multiline:
+          firstline: '^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] '
+          max_wait_time: 3s
+      - regex:
+          expression: '^\[(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[(?P<logger>[^\]]+)\] (?P<level>[A-Z]+) \| '
+      - labels:
+          level:
+      - timestamp:
+          source: ts
+          format: '2006-01-02 15:04:05'
+          location: Europe/Brussels
+
   - job_name: journal
     journal:
       path: /var/log/journal

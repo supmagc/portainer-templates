@@ -1,17 +1,24 @@
 #!/bin/bash
 # /usr/local/sbin/systemd-tasks-metrics.sh
 #
-# Exposes openHABian's systemd-timer backups (amdump-openhab-dir,
-# amandaBackupDB, acme-renew) and the manual SD-card-mirroring services
-# (sdrawcopy, sdrsync) as the shared `scheduled_job_*` textfile-collector
-# family every scheduled-job source in this repo writes into - see
-# docs/monitoring.md "Scheduled jobs (unified)" and
-# ScheduledJobStale/ScheduledJobFailed in
+# Exposes all of openHABian's systemd-timer-driven jobs - the Amanda backups
+# (amdump-openhab-dir, amandaBackupDB), the Caddy cert renewal (acme-renew),
+# and the SD-card-mirroring jobs (sdrawcopy, sdrsync) - as the shared
+# `scheduled_job_*` textfile-collector family every scheduled-job source in
+# this repo writes into - see docs/monitoring.md "Scheduled jobs (unified)"
+# and ScheduledJobStale/ScheduledJobFailed in
 # hosts/nas/.../grafana/provisioning/alerting/rules.yml. Replaces reading
 # node_systemd_timer_last_trigger_seconds/node_systemd_unit_state directly
 # from those alert rules - that required a label_replace() per unit and a
 # staleness threshold hardcoded into the PromQL itself, since there was no
 # metric to override it with.
+#
+# sdrawcopy/sdrsync are NOT "manual, no schedule" jobs - openhabian-config
+# option 53 installs them with real sdrawcopy.timer/sdrsync.timer units
+# (confirmed against github.com/openhab/openhabian's includes/SD/*.timer,
+# 2026-09-12 - don't trust an earlier assumption otherwise): sdrawcopy fires
+# semiannually (Jan 1 + Jul 1), sdrsync every 2 hours. They get exactly the
+# same treatment as the other three units below.
 #
 # scheduled_job_expected_interval_seconds is derived from the timer's own
 # NextElapseUSecRealtime - LastTriggerUSec, i.e. systemd's actual next-run
@@ -35,10 +42,8 @@ OUT_DIR="/var/lib/node_exporter/textfile"
 OUT_FILE="${OUT_DIR}/systemd_tasks.prom"
 TMP_FILE="${OUT_FILE}.tmp"
 SOURCE_TIMER="openhabian-timer"
-SOURCE_MANUAL="openhabian-manual"
 
-TIMER_UNITS="amdump-openhab-dir amandaBackupDB acme-renew"
-MANUAL_UNITS="sdrawcopy sdrsync"
+TIMER_UNITS="amdump-openhab-dir amandaBackupDB acme-renew sdrawcopy sdrsync"
 
 mkdir -p "$OUT_DIR"
 
@@ -89,14 +94,6 @@ result_to_exit_code() {
       interval=$((next_elapse_epoch - last_trigger_epoch))
       echo "scheduled_job_expected_interval_seconds{source=\"${SOURCE_TIMER}\", name=\"${unit}\"} ${interval}"
     fi
-  done
-
-  for unit in $MANUAL_UNITS; do
-    result_raw=$(systemctl show "${unit}.service" -p Result --value)
-    exit_code=$(result_to_exit_code "$result_raw")
-
-    echo "scheduled_job_last_exit_code{source=\"${SOURCE_MANUAL}\", name=\"${unit}\"} ${exit_code}"
-    echo "scheduled_job_enabled{source=\"${SOURCE_MANUAL}\", name=\"${unit}\"} 1"
   done
 } > "$TMP_FILE"
 

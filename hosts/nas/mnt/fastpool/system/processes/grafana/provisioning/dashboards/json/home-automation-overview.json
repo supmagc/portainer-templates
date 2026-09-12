@@ -11,24 +11,24 @@
   "panels": [
     { "id": 100, "type": "row", "title": "openHAB", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
     { "id": 1, "title": "Log Line Rate by File",
-      "description": "No native openHAB Prometheus exporter is deployed - this is Loki-sourced instead, using promtail's automatic 'filename' label to split events.log/openhab.log/HABApp.log/HABApp_events.log (all tailed under one 'openhab' job, see hosts/openhabian/etc/promtail/config.yml). events.log in particular is openHAB's own item-state-change log, so its rate is a reasonable proxy for 'event count'.",
+      "description": "No native openHAB Prometheus exporter is deployed - this is Loki-sourced instead. promtail ships each of openhab.log/events.log/HABApp.log/HABApp_events.log under its own distinct job label ('openhab'/'events'/'habapp'/'habapp_events', see hosts/openhabian/etc/promtail/config.yml) - this panel sums across all four and uses the 'filename' label to split them back out per file. HABApp_events.log is the high-volume one (rotates 5x16MB every ~7min) - its logging.yml formatter was trimmed to cut per-line bytes before shipping it (see hosts/openhabian/etc/openhab/habapp/logging.yml). events.log in particular is openHAB's own item-state-change log, so its rate is a reasonable proxy for 'event count'.",
       "type": "timeseries", "gridPos": { "x": 0, "y": 1, "w": 24, "h": 9 },
       "datasource": { "type": "loki", "uid": "loki" },
       "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 15, "lineWidth": 1 } }, "overrides": [] },
-      "targets": [{ "expr": "sum by (filename) (count_over_time({job=\"openhab\"}[$__interval]))", "legendFormat": "{{filename}}", "refId": "A" }] },
+      "targets": [{ "expr": "sum by (filename) (count_over_time({job=~\"openhab|events|habapp|habapp_events\"}[$__interval]))", "legendFormat": "{{filename}}", "refId": "A" }] },
     { "id": 2, "title": "Total Log Lines (range)", "description": "Total lines per file over the dashboard's time range - a coarse volume check.",
       "type": "table", "gridPos": { "x": 0, "y": 10, "w": 12, "h": 8 },
       "datasource": { "type": "loki", "uid": "loki" },
       "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [{ "matcher": { "id": "byName", "options": "Value" }, "properties": [{ "id": "displayName", "value": "Lines" }] }] },
       "options": { "showHeader": true, "sortBy": [{ "displayName": "Lines", "desc": true }] },
       "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true } } }],
-      "targets": [{ "expr": "sum by (filename) (count_over_time({job=\"openhab\"}[$__range]))", "queryType": "instant", "format": "table", "refId": "A" }] },
+      "targets": [{ "expr": "sum by (filename) (count_over_time({job=~\"openhab|events|habapp|habapp_events\"}[$__range]))", "queryType": "instant", "format": "table", "refId": "A" }] },
     { "id": 3, "title": "Error Lines (range)", "description": "Same generic /error/i text match caveat as Container Overview's error panels - not a structured level field.",
       "type": "stat", "gridPos": { "x": 12, "y": 10, "w": 12, "h": 8 },
       "datasource": { "type": "loki", "uid": "loki" },
       "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] } }, "overrides": [] },
       "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "justifyMode": "auto" },
-      "targets": [{ "expr": "sum(count_over_time({job=\"openhab\"} |~ \"(?i)error\" [$__range]))", "queryType": "instant", "refId": "A" }] },
+      "targets": [{ "expr": "sum(count_over_time({job=~\"openhab|events|habapp|habapp_events\"} |~ \"(?i)error\" [$__range]))", "queryType": "instant", "refId": "A" }] },
 
     { "id": 101, "type": "row", "title": "Host (Raspberry Pi)", "gridPos": { "x": 0, "y": 18, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
     { "id": 4, "title": "Load (1m)", "type": "stat", "gridPos": { "x": 0, "y": 19, "w": 4, "h": 4 },
@@ -62,31 +62,37 @@
       "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
       "targets": [{ "expr": "time() - node_boot_time_seconds{job=\"openhabian\"}", "instant": true, "refId": "A" }] },
 
-    { "id": 102, "type": "row", "title": "Scheduled Backups", "description": "openhabian-config schedules backups as systemd timers, not cron (see docs/openhabian-backup.md in openhab/openhabian) - amdump-<config> for the data backup, amandaBackupDB for Amanda's own database, sdrawcopy/sdrsync for SD-card mirroring if enabled. systemd-tasks-metrics.sh (run every 5m via its own timer) translates these into the shared scheduled_job_* family (source=openhabian-timer/openhabian-manual) - see docs/monitoring.md \"Scheduled jobs (unified)\". These same jobs are also covered by the ScheduledJobStale/ScheduledJobFailed alert rules.", "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
-    { "id": 10, "title": "Backup Timers - Last Triggered", "type": "table", "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": { "custom": { "align": "auto" } },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "name" }, "properties": [{ "id": "displayName", "value": "Timer" }] },
-          { "matcher": { "id": "byName", "options": "Last Triggered" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] }
-        ]
-      },
-      "options": { "showHeader": true },
-      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "source": true }, "renameByName": { "Value": "Last Triggered" } } }],
-      "targets": [{ "expr": "scheduled_job_last_run_timestamp_seconds{source=\"openhabian-timer\"} * 1000", "instant": true, "format": "table", "refId": "A" }] },
-    { "id": 11, "title": "Backup Services - Last Run Result", "type": "table", "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+    { "id": 102, "type": "row", "title": "Scheduled Backups", "description": "openhabian-config schedules backups as systemd timers, not cron (see docs/openhabian-backup.md in openhab/openhabian) - amdump-<config> for the data backup, amandaBackupDB for Amanda's own database, sdrawcopy/sdrsync for SD-card mirroring if enabled (both are real timers too, not manual-only - see systemd-tasks-metrics.sh). systemd-tasks-metrics.sh (run every 5m via its own timer) translates these into the shared scheduled_job_* family (source=openhabian-timer) - see docs/monitoring.md \"Scheduled jobs (unified)\". These same jobs are also covered by the ScheduledJobStale/ScheduledJobFailed alert rules.", "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 10, "title": "Scheduled Jobs", "description": "One row per job - a job only appears once it has run at least once. Expected Interval is read straight off each timer's own NextElapseUSecRealtime, not a hardcoded guess (see systemd-tasks-metrics.sh).",
+      "type": "table", "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "name" }, "properties": [{ "id": "displayName", "value": "Service" }] },
-          { "matcher": { "id": "byName", "options": "Result" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "0": { "text": "Success", "color": "green" } } }, { "type": "range", "options": { "from": 1, "to": 255, "result": { "text": "Failed", "color": "red" } } }] }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] }
+          { "matcher": { "id": "byName", "options": "name" }, "properties": [{ "id": "displayName", "value": "Job" }] },
+          { "matcher": { "id": "byName", "options": "Last Run" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] },
+          { "matcher": { "id": "byName", "options": "Exit Code" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "0": { "text": "Success", "color": "green" } } }, { "type": "range", "options": { "from": 1, "to": 255, "result": { "text": "Failed", "color": "red" } } }] }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] },
+          { "matcher": { "id": "byName", "options": "Expected Interval" }, "properties": [{ "id": "unit", "value": "s" }] },
+          { "matcher": { "id": "byName", "options": "Enabled" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "1": { "text": "Yes", "color": "green" }, "0": { "text": "No", "color": "text" } } }] }] }
         ]
       },
       "options": { "showHeader": true },
-      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "source": true }, "renameByName": { "Value": "Result" } } }],
-      "targets": [{ "expr": "scheduled_job_last_exit_code{source=~\"openhabian-.*\"}", "instant": true, "format": "table", "refId": "A" }] },
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "name", "mode": "outer" } },
+        { "id": "organize", "options": { "excludeByName": {
+            "Time": true, "Time 1": true, "Time 2": true, "Time 3": true, "Time 4": true,
+            "job": true, "job 1": true, "job 2": true, "job 3": true, "job 4": true,
+            "instance": true, "instance 1": true, "instance 2": true, "instance 3": true, "instance 4": true,
+            "__name__": true, "__name__ 1": true, "__name__ 2": true, "__name__ 3": true, "__name__ 4": true,
+            "source": true, "source 1": true, "source 2": true, "source 3": true, "source 4": true
+          }, "renameByName": { "Value #A": "Last Run", "Value #B": "Exit Code", "Value #C": "Expected Interval", "Value #D": "Enabled" } } }
+      ],
+      "targets": [
+        { "expr": "scheduled_job_last_run_timestamp_seconds{source=\"openhabian-timer\"} * 1000", "instant": true, "format": "table", "refId": "A" },
+        { "expr": "scheduled_job_last_exit_code{source=\"openhabian-timer\"}", "instant": true, "format": "table", "refId": "B" },
+        { "expr": "scheduled_job_expected_interval_seconds{source=\"openhabian-timer\"}", "instant": true, "format": "table", "refId": "C" },
+        { "expr": "scheduled_job_enabled{source=\"openhabian-timer\"}", "instant": true, "format": "table", "refId": "D" }
+      ] },
 
     { "id": 103, "type": "row", "title": "Grafana (local)", "description": "openHABian's own local Grafana instance, separate from this stack's Grafana entirely - its own native /metrics endpoint, always exposed unauthenticated by any Grafana. Go-runtime health only (no dashboard/alerting-specific metrics assumed, to avoid guessing at grafana_* metric names this session couldn't verify live against this second instance).", "gridPos": { "x": 0, "y": 32, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
     { "id": 12, "title": "Status", "type": "stat", "gridPos": { "x": 0, "y": 33, "w": 6, "h": 4 },

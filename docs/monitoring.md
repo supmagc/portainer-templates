@@ -133,28 +133,25 @@ Promtail are both static Go binaries installed by hand and run as systemd units 
 `hosts/openhabian/etc/`). openHABian's own scheduled backups (Amanda-based) are **systemd
 timers** (`amdump-openhab-dir.timer`, `amandaBackupDB.timer`) plus a daily `acme-renew.timer`
 for the Caddy TLS cert — not cron. `sdrawcopy`/`sdrsync` (SD-card mirroring, see
-`99-usb-drives.rules`) have **no timer at all** — they're started by hand when the SD card
-reader is plugged in, so there's no fixed schedule to be "stale" against.
+`99-usb-drives.rules`) are **also systemd timers**, installed by `openhabian-config` option
+53 (`sdrawcopy.timer` fires semiannually, Jan 1 + Jul 1; `sdrsync.timer` fires every 2 hours)
+— confirmed against openHABian's own source (`github.com/openhab/openhabian`,
+`includes/SD/*.timer`), not to be trusted as "manual, no schedule" like an earlier version
+of this doc claimed.
 
 `systemd-tasks-metrics.sh` (`hosts/openhabian/usr/local/sbin/`, run every 5m via its own
 `systemd-tasks-metrics.timer`) translates that state into the shared `scheduled_job_*`
 textfile family — same idiom as `snapshot-tasks-metrics.sh` on the NAS, so
 `ScheduledJobStale`/`ScheduledJobFailed` don't need to know openHABian is a different kind
-of source at all:
-- **`openhabian-timer`** — `amdump-openhab-dir`, `amandaBackupDB`, `acme-renew`. Last-run
-  comes from each `.timer`'s `LastTriggerUSec`, exit code from the paired `.service`'s
-  `Result`. `scheduled_job_expected_interval_seconds` is computed as
-  `NextElapseUSecRealtime - LastTriggerUSec` — systemd's own next-scheduled-fire time minus
-  its last actual fire, rather than a value hardcoded per unit — so it self-corrects if a
-  `.timer`'s `OnCalendar`/`RandomizedDelaySec` ever changes. A timer that hasn't fired even
-  once yet (fresh install) gets no `expected_interval_seconds` sample until it has — see
-  the script's header comment.
-- **`openhabian-manual`** — `sdrawcopy`/`sdrsync`. No timer to read a schedule from, so the
-  script only emits `last_exit_code`/`enabled` for these, same as before: no
-  `expected_interval_seconds` sample means `ScheduledJobStale` never has anything to join
-  against for them, matching "there's no 'should have run by now' for something with no
-  schedule." Kept as a separate source value from `openhabian-timer` so it reads as a
-  different *kind* of job at a glance.
+of source at all. All five units (`amdump-openhab-dir`, `amandaBackupDB`, `acme-renew`,
+`sdrawcopy`, `sdrsync`) are treated identically under a single `openhabian-timer` source:
+last-run comes from each `.timer`'s `LastTriggerUSec`, exit code from the paired `.service`'s
+`Result`. `scheduled_job_expected_interval_seconds` is computed as
+`NextElapseUSecRealtime - LastTriggerUSec` — systemd's own next-scheduled-fire time minus
+its last actual fire, rather than a value hardcoded per unit — so it self-corrects if a
+`.timer`'s `OnCalendar`/`RandomizedDelaySec` ever changes, and needs no special-casing for
+`sdrawcopy`'s much longer interval. A timer that hasn't fired even once yet (fresh install)
+gets no `expected_interval_seconds` sample until it has — see the script's header comment.
 
 node_exporter's own `--collector.systemd` is no longer used here — dropped in favor of the
 textfile collector (`--collector.textfile.directory`) once `systemd-tasks-metrics.sh` covered
@@ -209,11 +206,19 @@ Scrape jobs and the reasons they're shaped the way they are:
 - `habapp` (`/var/log/openhab/HABApp.log`) — HabApp's Python-logging format, which per the
   install's `logging.yml` has **no milliseconds** and remaps `WARNING`→`WARN`; the regex
   and `timestamp` format account for both. This file is low-volume by design — the
-  chatty `HABApp.EventBus` logger goes to `HABApp_events.log`, which is **deliberately not
-  shipped**: it rotates all 5×16 MB backups roughly every 7 minutes, and `/var/log` is on
-  size-capped zram (openHABian `zram-config`, limit in `/etc/ztab`), so shipping it would
-  blow the zram budget and swamp the Pi's Loki. HabApp is the switch away from JSR223 JS
-  rules; its file logging is what made Loki analysis viable.
+  chatty `HABApp.EventBus` logger goes to `HABApp_events.log`, shipped separately as its
+  own `habapp_events` job (see below). HabApp is the switch away from JSR223 JS rules;
+  its file logging is what made Loki analysis viable.
+- `habapp_events` (`/var/log/openhab/HABApp_events.log`) — the `HABApp.EventBus` firehose:
+  rotates all 5×16 MB backups roughly every 7 minutes. Originally left unshipped over
+  concern for the Pi's size-capped zram `/var/log` (`zram-config`, limit in `/etc/ztab`)
+  and the local Loki's own storage, but shipped as of 2026-09-12 at the user's request. To
+  offset the per-line cost at this volume, its `logging.yml` formatter
+  (`HABApp_events_format`) drops the fixed-width padding (`%(name)25s`/`%(levelname)8s`)
+  that `HABApp_format` uses, trimming bytes/line without losing any information. Own `job`
+  label for the same mute/drop-independently reason as `events`. Worth revisiting local
+  Loki retention/disk usage on the Pi if this turns out to fill storage faster than
+  expected.
 - `journal` (systemd journal via the `sd-journal` API, **not** a file). This install is
   journald-only — there is **no `/var/log/syslog`** — so a file-based syslog job would
   tail nothing. The journal target also sidesteps any inotify-on-overlayfs quirks since
