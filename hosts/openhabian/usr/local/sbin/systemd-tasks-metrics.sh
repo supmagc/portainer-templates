@@ -16,9 +16,10 @@
 # sdrawcopy/sdrsync are NOT "manual, no schedule" jobs - openhabian-config
 # option 53 installs them with real sdrawcopy.timer/sdrsync.timer units
 # (confirmed against github.com/openhab/openhabian's includes/SD/*.timer,
-# 2026-09-12 - don't trust an earlier assumption otherwise): sdrawcopy fires
-# semiannually (Jan 1 + Jul 1), sdrsync every 2 hours. They get exactly the
-# same treatment as the other three units below.
+# 2026-09-12 - don't trust an earlier assumption otherwise): sdrawcopy's
+# stock default is semiannual (Jan 1 + Jul 1), overridden here to every 2
+# months via sdrawcopy.timer.d/schedule.conf; sdrsync fires every 2 hours.
+# They get exactly the same treatment as the other three units below.
 #
 # scheduled_job_expected_interval_seconds is derived from the timer's own
 # NextElapseUSecRealtime - LastTriggerUSec, i.e. systemd's actual next-run

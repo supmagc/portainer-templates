@@ -73,5 +73,7 @@ spare. Tracked here:
   reader. This guards against a `/dev/sda`↔`/dev/sdb` USB re-enumeration causing a mirror
   job to write over the Transcend SSD (which holds the Amanda vtapes and holding disk)
   instead of the spare card.
+- `sdrawcopy.timer.d/schedule.conf` — overrides openhabian-config's stock semiannual
+  `OnCalendar` to run every 2 months instead.
 - `99-usb-drives.rules` — udev rules giving stable `/dev/sdbackup*` and `/dev/ssd*` names
   so the guard and the Amanda paths don't depend on kernel enumeration order.

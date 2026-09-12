@@ -134,10 +134,11 @@ Promtail are both static Go binaries installed by hand and run as systemd units 
 timers** (`amdump-openhab-dir.timer`, `amandaBackupDB.timer`) plus a daily `acme-renew.timer`
 for the Caddy TLS cert — not cron. `sdrawcopy`/`sdrsync` (SD-card mirroring, see
 `99-usb-drives.rules`) are **also systemd timers**, installed by `openhabian-config` option
-53 (`sdrawcopy.timer` fires semiannually, Jan 1 + Jul 1; `sdrsync.timer` fires every 2 hours)
-— confirmed against openHABian's own source (`github.com/openhab/openhabian`,
+53 (`sdrawcopy.timer` stock default fires semiannually, Jan 1 + Jul 1; `sdrsync.timer` fires
+every 2 hours) — confirmed against openHABian's own source (`github.com/openhab/openhabian`,
 `includes/SD/*.timer`), not to be trusted as "manual, no schedule" like an earlier version
-of this doc claimed.
+of this doc claimed. `sdrawcopy.timer` is overridden here to run every 2 months instead — see
+`sdrawcopy.timer.d/schedule.conf`.
 
 `systemd-tasks-metrics.sh` (`hosts/openhabian/usr/local/sbin/`, run every 5m via its own
 `systemd-tasks-metrics.timer`) translates that state into the shared `scheduled_job_*`
