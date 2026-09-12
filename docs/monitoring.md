@@ -210,15 +210,43 @@ Scrape jobs and the reasons they're shaped the way they are:
   own `habapp_events` job (see below). HabApp is the switch away from JSR223 JS rules;
   its file logging is what made Loki analysis viable.
 - `habapp_events` (`/var/log/openhab/HABApp_events.log`) — the `HABApp.EventBus` firehose:
-  rotates all 5×16 MB backups roughly every 7 minutes. Originally left unshipped over
-  concern for the Pi's size-capped zram `/var/log` (`zram-config`, limit in `/etc/ztab`)
-  and the local Loki's own storage, but shipped as of 2026-09-12 at the user's request. To
-  offset the per-line cost at this volume, its `logging.yml` formatter
-  (`HABApp_events_format`) drops the fixed-width padding (`%(name)25s`/`%(levelname)8s`)
-  that `HABApp_format` uses, trimming bytes/line without losing any information. Own `job`
-  label for the same mute/drop-independently reason as `events`. Worth revisiting local
-  Loki retention/disk usage on the Pi if this turns out to fill storage faster than
-  expected.
+  rotated at 5×16 MB, roughly every 7 minutes at INFO. The local file's size was never
+  actually at risk — `RotatingFileHandler`'s `maxBytes`/`backupCount` cap it regardless of
+  volume, so the Pi's size-capped zram `/var/log` (`zram-config`, limit in `/etc/ztab`)
+  isn't the constraint; the real cost of shipping it is Loki *storage* (both the local Pi
+  Loki and the NAS one) growing with line volume, unbounded by that local rotation cap.
+  Originally left unshipped over that concern; shipped as of 2026-09-12 at the user's
+  request. `HABApp.EventBus` was briefly dropped to `WARNING` the same day (HABApp isn't
+  running real rules yet — just connected ahead of a future migration off JSR223 — so the
+  firehose had no signal worth the ingest cost), then reverted back to `INFO` by the user:
+  a manual "remember to flip this back to INFO once the migration starts" step is a footgun
+  they'd rather not carry. Measured over one hour at unfiltered INFO: ~60%
+  `ThingStatusInfoEvent` + ~40% `ItemStateUpdatedEvent` (both fire on every poll, changed or
+  not) vs. ~0.5% `ItemStateChangedEvent` (an actual change) — unlike openHAB core's
+  `events.log`, HABApp's `EventBus` logger has no equivalent changed-only allow-list;
+  per-rule `EventFilter`s (`ValueUpdateEventFilter` vs `ValueChangeEventFilter`) exist but
+  don't apply to this global logger. A `HABAppUser.py` startup module (HABApp's own
+  documented hook for registering a `logging.Filter` programmatically, since `logging.yml`
+  has no declarative way to do it) was tried and then **reverted** — it dropped
+  `ItemStateUpdatedEvent`/`ThingStatusInfoEvent` at INFO on the assumption that any real
+  change is always also captured by the corresponding `ItemStateChangedEvent`. That
+  assumption doesn't reliably hold: openhab-core#1092 documents `ItemStateEvent` (the
+  `ItemStateUpdatedEvent` class) and `ItemStateChangedEvent` reporting genuinely different
+  values for the same transition when a command is involved (e.g. a color item's `OFF`
+  command shows as `OFF` in the updated-event but `0,0,0` in the changed-event) — so a
+  blanket drop of `ItemStateUpdatedEvent` risks losing information the changed-event never
+  carries, not just deduplicating it. Revisit only with a narrower rule (e.g. drop
+  `ThingStatusInfoEvent` alone, which doesn't have this discrepancy) if the volume becomes
+  a real problem rather than a cosmetic one; a promtail `drop` stage remains the
+  lower-risk fallback (still writes the full firehose locally first, but at least doesn't
+  discard anything HABApp itself might one day read off its internal event bus). Its
+  `logging.yml` formatter (`HABApp_events_format`) still drops the fixed-width padding
+  (`%(name)25s`/`%(levelname)8s`) that `HABApp_format` uses, to keep per-line cost down at
+  this volume. Own `job` label for the same mute/drop-independently reason as `events`. The
+  "Log Line Rate by File" panel on the `home-automation-overview` Grafana dashboard plots
+  this alongside `openhab`/`events`/`habapp` on a log-scaled Y axis for exactly this reason
+  — at full volume habapp_events outnumbers the other three by 2-3 orders of magnitude and
+  flattens them on a linear axis.
 - `journal` (systemd journal via the `sd-journal` API, **not** a file). This install is
   journald-only — there is **no `/var/log/syslog`** — so a file-based syslog job would
   tail nothing. The journal target also sidesteps any inotify-on-overlayfs quirks since
