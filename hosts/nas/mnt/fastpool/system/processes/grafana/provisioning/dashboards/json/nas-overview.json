@@ -234,10 +234,10 @@
           }, "renameByName": { "Value #A": "Last Run", "Value #B": "Exit Code", "Value #C": "Expected Interval", "Value #D": "Enabled" } } }
       ],
       "targets": [
-        { "expr": "scheduled_job_last_run_timestamp_seconds * 1000", "instant": true, "format": "table", "refId": "A" },
-        { "expr": "scheduled_job_last_exit_code", "instant": true, "format": "table", "refId": "B" },
-        { "expr": "scheduled_job_expected_interval_seconds", "instant": true, "format": "table", "refId": "C" },
-        { "expr": "scheduled_job_enabled", "instant": true, "format": "table", "refId": "D" }
+        { "expr": "scheduled_job_last_run_timestamp_seconds{source=~\"nas-.*\"} * 1000", "instant": true, "format": "table", "refId": "A" },
+        { "expr": "scheduled_job_last_exit_code{source=~\"nas-.*\"}", "instant": true, "format": "table", "refId": "B" },
+        { "expr": "scheduled_job_expected_interval_seconds{source=~\"nas-.*\"}", "instant": true, "format": "table", "refId": "C" },
+        { "expr": "scheduled_job_enabled{source=~\"nas-.*\"}", "instant": true, "format": "table", "refId": "D" }
       ] },
 
     { "id": 106, "type": "row", "title": "GPU (Emby Transcoding)", "description": "Emby's runtime: nvidia container is the only consumer of this GPU - see docker-compose-multimedia.yml.", "gridPos": { "x": 0, "y": 89, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },

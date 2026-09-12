@@ -521,52 +521,23 @@ groups:
           summary: "Pool {{ $labels.pool }} is not ONLINE"
           description: "ZFS pool {{ $labels.pool }} is DEGRADED/FAULTED/OFFLINE/UNAVAIL/REMOVED - check `zpool status {{ $labels.pool }}` now."
 
-      # scheduled_job_* is the shared metric family for scheduled-job sources
-      # with no standard exporter metric of their own - see docs/monitoring.md
-      # "Scheduled jobs (unified)": cron-wrapper.sh (NAS cron jobs,
-      # source="nas-cron"), snapshot-tasks-metrics.sh (source="nas-snapshot"),
-      # cloudsync-tasks-metrics.sh (source="nas-cloudsync") - all genuinely
-      # custom (no exporter surfaces TrueNAS cron/task state), so a
-      # textfile-collector script is the only option, same idiom as
-      # zpool-metrics.sh.
-      #
-      # openHABian's backups are systemd timers, and node_exporter's own
-      # --collector.systemd *already* exposes their state natively
-      # (node_systemd_timer_last_trigger_seconds, node_systemd_unit_state) -
-      # no custom script needed there, so these two rules read that directly
-      # instead of going through a translation script. Both branches are
-      # `or`-ed into the same refId A so one alert still covers every source;
-      # adding a new *custom-script* source later just means writing the
-      # scheduled_job_* family (no rule changes) - adding a new *natively
-      # exported* source means adding another `or` branch here instead, same
-      # as the openhabian branches below.
-      #
-      # source="openhabian-timer": amdump-openhab-dir/amandaBackupDB/
-      # acme-renew - real .timer units, get both rules below.
-      # source="openhabian-manual": sdrawcopy/sdrsync - SD-card mirroring
-      # started by hand (see 99-usb-drives.rules), no .timer unit exists for
-      # them, so they only appear in ScheduledJobFailed - there's no
-      # "should have run by now" for something with no schedule. Kept as its
-      # own source value (not lumped into openhabian-timer) so the table/
-      # alerts make it visually obvious these are a different kind of job.
+      # scheduled_job_* is the shared metric family every scheduled-job
+      # source in this repo writes into - see docs/monitoring.md "Scheduled
+      # jobs (unified)": cron-wrapper.sh (NAS cron jobs, source="nas-cron"),
+      # snapshot-tasks-metrics.sh (source="nas-snapshot"),
+      # cloudsync-tasks-metrics.sh (source="nas-cloudsync"), and
+      # systemd-tasks-metrics.sh on openHABian (source="openhabian-timer" for
+      # its 3 real timers, "openhabian-manual" for sdrawcopy/sdrsync, which
+      # have no timer and so never get an expected_interval_seconds sample -
+      # naturally excluded from ScheduledJobStale, same as a TrueNAS task
+      # that's never completed a run). One textfile-collector idiom for every
+      # source means adding a new one is always just "write the
+      # scheduled_job_* family", no rule changes here.
       #
       # Labels are deliberately just {source, name} - no label here is named
       # "job", which would collide with Prometheus's own scrape-config label
       # of that name and get silently renamed to "exported_job" (the trap the
-      # old cron_job_* metrics fell into). node_systemd_* metrics already use
-      # "name" for the unit name, which is why label_replace below only needs
-      # to inject "source" and strip the .timer/.service suffix, not rename
-      # anything.
-      #
-      # scheduled_job_expected_interval_seconds is the per-job timewindow
-      # override for the custom-script sources - cron-wrapper.sh takes it as
-      # a caller-supplied arg, the TrueNAS-task scripts estimate it from the
-      # task's own schedule. For openhabian-timer the threshold is inline in
-      # the PromQL below instead (93600s = 26h for the two 00:xx/01:xx daily
-      # timers, 97200s = 27h for acme-renew's 03:00 + up-to-30m random delay)
-      # since there's no metric to hang a per-job override on without a
-      # script - see each unit's .timer file for its real OnCalendar/
-      # RandomizedDelaySec if these ever need retuning.
+      # old cron_job_* metrics fell into).
       - uid: scheduled-job-stale
         title: ScheduledJobStale
         condition: C
@@ -579,7 +550,7 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: ((time() - scheduled_job_last_run_timestamp_seconds) > scheduled_job_expected_interval_seconds and scheduled_job_enabled == 1) or label_replace(label_replace(time() - node_systemd_timer_last_trigger_seconds{name=~`(amdump-openhab-dir|amandaBackupDB)\.timer`} > 93600, "source", "openhabian-timer", "instance", ".*"), "name", "$1", "name", `(.+)\.timer`) or label_replace(label_replace(time() - node_systemd_timer_last_trigger_seconds{name="acme-renew.timer"} > 97200, "source", "openhabian-timer", "instance", ".*"), "name", "$1", "name", `(.+)\.timer`)
+              expr: (time() - scheduled_job_last_run_timestamp_seconds) - scheduled_job_expected_interval_seconds and scheduled_job_enabled == 1
               instant: true
               refId: A
           - refId: B
@@ -623,7 +594,7 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: (scheduled_job_last_exit_code and scheduled_job_enabled == 1) or label_replace(label_replace(node_systemd_unit_state{name=~`(amdump-openhab-dir|amandaBackupDB|acme-renew)\.service`, state="failed"}, "source", "openhabian-timer", "instance", ".*"), "name", "$1", "name", `(.+)\.service`) or label_replace(label_replace(node_systemd_unit_state{name=~`(sdrawcopy|sdrsync)\.service`, state="failed"}, "source", "openhabian-manual", "instance", ".*"), "name", "$1", "name", `(.+)\.service`)
+              expr: scheduled_job_last_exit_code and scheduled_job_enabled == 1
               instant: true
               refId: A
           - refId: B
@@ -714,8 +685,3 @@ groups:
         annotations:
           summary: "Cert for {{ $labels.instance }} expires in {{ $values.B.Value }} days"
           description: "TLS cert served by {{ $labels.instance }} has less than 7 days left - check the acme.sh renewal cron on the relevant host."
-
-      # CloudSyncTaskFailed folded into ScheduledJobFailed (source="nas-cloudsync")
-      # above - cloudsync-tasks-metrics.sh now writes the shared scheduled_job_*
-      # family too, alongside the raw cloudsync_task_* metrics kept for the
-      # "Cloud Sync Tasks" dashboard table's state string.

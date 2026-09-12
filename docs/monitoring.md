@@ -63,25 +63,24 @@ its job-identity label is called `name`, not `job`, so it never hits the collisi
 
 ## Scheduled jobs (unified)
 
-Two kinds of scheduled-job source exist in this repo, and each is monitored the way that
-fits it best — but both feed the *same* two Grafana alert rules (`ScheduledJobStale`,
-`ScheduledJobFailed` in `grafana/provisioning/alerting/rules.yml`), so there's still only
-one alert to know about regardless of source:
+Every scheduled-job source in this repo — NAS cron jobs, TrueNAS's Periodic Snapshot/Cloud
+Sync Tasks, and openHABian's systemd-timer backups — writes into one shared
+textfile-collector metric family, described below, which feeds the *same* two Grafana
+alert rules (`ScheduledJobStale`, `ScheduledJobFailed` in
+`grafana/provisioning/alerting/rules.yml`). One alert to know about regardless of source,
+and both rules are a single plain PromQL expression each — no per-source branches.
 
-- **No standard exporter metric exists** (NAS cron jobs, TrueNAS's Periodic Snapshot/Cloud
-  Sync Tasks) — these write into a shared textfile-collector metric family, described below.
-  This is the only option here; nothing exposes TrueNAS cron/task state natively.
-- **A standard exporter metric already exists** (openHABian's systemd-timer backups, via
-  node_exporter's own `--collector.systemd`) — the alert rules query that metric directly.
-  No custom script, no textfile collector, no new metric family — see "openHABian host
-  monitoring" below for exactly which native metrics and how they're read.
+This wasn't always true: openHABian's timers used to be read directly off
+node_exporter's own `--collector.systemd` metrics, which forced a `label_replace()` per
+unit and a staleness threshold hardcoded into the PromQL itself (no metric existed to
+override it with). `systemd-tasks-metrics.sh` (see "openHABian host monitoring" below)
+replaced that with the same textfile idiom every other source already used, so the
+rules no longer need to know openHABian exists at all.
 
-Adding a new source later: if nothing exposes it, write the `scheduled_job_*` family below
-(no rule changes needed, it's already wired in). If it's already exposed by a standard
-exporter, add an `or`-ed branch to both rules' PromQL instead (openHABian's branches are the
-template for this).
+Adding a new source later is always the same: write the `scheduled_job_*` family below —
+no rule changes needed, it's already wired in.
 
-The shared `scheduled_job_*` family (custom-script sources only):
+The shared `scheduled_job_*` family:
 
 - `scheduled_job_last_run_timestamp_seconds{source, name}`
 - `scheduled_job_last_exit_code{source, name}` — 0 = success, nonzero = failure (exact
@@ -113,6 +112,7 @@ Sources as of this writing:
   Backblaze B2 key) — the parser must never read that field.** It currently only touches
   `id`/`description`/`enabled`/`schedule`/`job.state`/`job.time_finished`; keep it that way
   if this script is ever extended.
+- **`openhabian-timer`** / **`openhabian-manual`** — see "openHABian host monitoring" below.
 - A third-party TrueNAS API exporter (`alexlmiller/truenas-grafana`, needs an API token)
   was considered and explicitly rejected in favor of the local `midclt` approach — no
   externally-facing token to manage, no extra moving part.
@@ -132,32 +132,34 @@ The `openhabian` host runs natively on a Raspberry Pi — no Docker. `node_expor
 Promtail are both static Go binaries installed by hand and run as systemd units (see
 `hosts/openhabian/etc/`). openHABian's own scheduled backups (Amanda-based) are **systemd
 timers** (`amdump-openhab-dir.timer`, `amandaBackupDB.timer`) plus a daily `acme-renew.timer`
-for the Caddy TLS cert — not cron — so their raw state is visible for free via
-`node_exporter --collector.systemd` (scoped via `--collector.systemd.unit-include`, see that
-unit file). `sdrawcopy`/`sdrsync` (SD-card mirroring, see `99-usb-drives.rules`) have **no
-timer at all** — they're started by hand when the SD card reader is plugged in, covered by
-`--collector.systemd` the same way but with no fixed schedule to be "stale" against.
+for the Caddy TLS cert — not cron. `sdrawcopy`/`sdrsync` (SD-card mirroring, see
+`99-usb-drives.rules`) have **no timer at all** — they're started by hand when the SD card
+reader is plugged in, so there's no fixed schedule to be "stale" against.
 
-`ScheduledJobStale`/`ScheduledJobFailed` (see "Scheduled jobs (unified)" above) read that
-native state directly — no wrapper script, no textfile collector, just two extra `or`-ed
-PromQL branches in `rules.yml`:
-- `node_systemd_timer_last_trigger_seconds{name="<unit>.timer"}` — when the timer last
-  fired. `ScheduledJobStale`'s openHABian branches compare `time() - this` against a
-  threshold hardcoded per unit in the alert query (93600s/26h for the two 00:xx/01:xx daily
-  timers, 97200s/27h for `acme-renew` given its 03:00 + up-to-30m `RandomizedDelaySec`) —
-  there's no metric to hang a per-job override on without a script, so the threshold lives
-  in the alert instead; retune it there if a `.timer` file's schedule ever changes.
-- `node_systemd_unit_state{name="<unit>.service", state="failed"}` — 1 if the unit's last
-  run ended in the `failed` state (systemd keeps this until the next run, same persistence
-  a cron exit code needs). `ScheduledJobFailed`'s openHABian branch reads this directly.
+`systemd-tasks-metrics.sh` (`hosts/openhabian/usr/local/sbin/`, run every 5m via its own
+`systemd-tasks-metrics.timer`) translates that state into the shared `scheduled_job_*`
+textfile family — same idiom as `snapshot-tasks-metrics.sh` on the NAS, so
+`ScheduledJobStale`/`ScheduledJobFailed` don't need to know openHABian is a different kind
+of source at all:
+- **`openhabian-timer`** — `amdump-openhab-dir`, `amandaBackupDB`, `acme-renew`. Last-run
+  comes from each `.timer`'s `LastTriggerUSec`, exit code from the paired `.service`'s
+  `Result`. `scheduled_job_expected_interval_seconds` is computed as
+  `NextElapseUSecRealtime - LastTriggerUSec` — systemd's own next-scheduled-fire time minus
+  its last actual fire, rather than a value hardcoded per unit — so it self-corrects if a
+  `.timer`'s `OnCalendar`/`RandomizedDelaySec` ever changes. A timer that hasn't fired even
+  once yet (fresh install) gets no `expected_interval_seconds` sample until it has — see
+  the script's header comment.
+- **`openhabian-manual`** — `sdrawcopy`/`sdrsync`. No timer to read a schedule from, so the
+  script only emits `last_exit_code`/`enabled` for these, same as before: no
+  `expected_interval_seconds` sample means `ScheduledJobStale` never has anything to join
+  against for them, matching "there's no 'should have run by now' for something with no
+  schedule." Kept as a separate source value from `openhabian-timer` so it reads as a
+  different *kind* of job at a glance.
 
-Both alert branches inject a synthetic `source` label via `label_replace()` so annotations
-read the same way regardless of source: **`openhabian-timer`** for the three real timer
-units above, and **`openhabian-manual`** for `sdrawcopy`/`sdrsync` — SD-card mirroring
-started by hand (see `99-usb-drives.rules`), which has no `.timer` unit and so only ever
-appears in the `ScheduledJobFailed` branch (there's no "should have run by now" for
-something with no schedule). Kept as a separate source value rather than folded into
-`openhabian-timer` specifically so it reads as a different *kind* of job at a glance.
+node_exporter's own `--collector.systemd` is no longer used here — dropped in favor of the
+textfile collector (`--collector.textfile.directory`) once `systemd-tasks-metrics.sh` covered
+everything it was reading, which also retires the unit-include regex that flag required
+(see git history if `node_systemd_*` metrics are ever needed again for something else).
 
 See [backups.md](backups.md) for what those backup units actually do. openHABian also
 bundles a local Grafana (port 3000, native `/metrics`) and InfluxDB **1.x** (port 8086 —

@@ -1,0 +1,8 @@
+[Unit]
+Description=Write openHABian's scheduled-job metrics for node_exporter's textfile collector
+Documentation=file:///usr/local/sbin/systemd-tasks-metrics.sh
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/systemd-tasks-metrics.sh

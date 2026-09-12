@@ -62,7 +62,7 @@
       "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
       "targets": [{ "expr": "time() - node_boot_time_seconds{job=\"openhabian\"}", "instant": true, "refId": "A" }] },
 
-    { "id": 102, "type": "row", "title": "Scheduled Backups", "description": "openhabian-config schedules backups as systemd timers, not cron (see docs/openhabian-backup.md in openhab/openhabian) - amdump-<config> for the data backup (exact <config> name depends on what was picked during setup, run `systemctl list-timers` on the Pi to confirm it matches the filter below), amandaBackupDB for Amanda's own database, sdrawcopy/sdrsync for SD-card mirroring if enabled. Requires node_exporter's systemd collector, scoped to just these units (see node_exporter.service).", "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 102, "type": "row", "title": "Scheduled Backups", "description": "openhabian-config schedules backups as systemd timers, not cron (see docs/openhabian-backup.md in openhab/openhabian) - amdump-<config> for the data backup, amandaBackupDB for Amanda's own database, sdrawcopy/sdrsync for SD-card mirroring if enabled. systemd-tasks-metrics.sh (run every 5m via its own timer) translates these into the shared scheduled_job_* family (source=openhabian-timer/openhabian-manual) - see docs/monitoring.md \"Scheduled jobs (unified)\". These same jobs are also covered by the ScheduledJobStale/ScheduledJobFailed alert rules.", "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
     { "id": 10, "title": "Backup Timers - Last Triggered", "type": "table", "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
@@ -73,20 +73,20 @@
         ]
       },
       "options": { "showHeader": true },
-      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true }, "renameByName": { "Value": "Last Triggered" } } }],
-      "targets": [{ "expr": "node_systemd_timer_last_trigger_seconds{job=\"openhabian\", name=~\"(amdump-.*|amandaBackupDB|sdrawcopy|sdrsync)[.]timer\"} * 1000", "instant": true, "format": "table", "refId": "A" }] },
-    { "id": 11, "title": "Backup Services - Current State", "type": "table", "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "source": true }, "renameByName": { "Value": "Last Triggered" } } }],
+      "targets": [{ "expr": "scheduled_job_last_run_timestamp_seconds{source=\"openhabian-timer\"} * 1000", "instant": true, "format": "table", "refId": "A" }] },
+    { "id": 11, "title": "Backup Services - Last Run Result", "type": "table", "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
         "overrides": [
           { "matcher": { "id": "byName", "options": "name" }, "properties": [{ "id": "displayName", "value": "Service" }] },
-          { "matcher": { "id": "byName", "options": "state" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "active": { "text": "active", "color": "green" }, "failed": { "text": "failed", "color": "red" }, "inactive": { "text": "inactive", "color": "text" } } }] }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] }
+          { "matcher": { "id": "byName", "options": "Result" }, "properties": [{ "id": "mappings", "value": [{ "type": "value", "options": { "0": { "text": "Success", "color": "green" } } }, { "type": "range", "options": { "from": 1, "to": 255, "result": { "text": "Failed", "color": "red" } } }] }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }] }
         ]
       },
       "options": { "showHeader": true },
-      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "Value": true } } }],
-      "targets": [{ "expr": "node_systemd_unit_state{job=\"openhabian\", name=~\"(amdump-.*|amandaBackupDB|sdrawcopy|sdrsync)[.]service\"} == 1", "instant": true, "format": "table", "refId": "A" }] },
+      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "job": true, "instance": true, "source": true }, "renameByName": { "Value": "Result" } } }],
+      "targets": [{ "expr": "scheduled_job_last_exit_code{source=~\"openhabian-.*\"}", "instant": true, "format": "table", "refId": "A" }] },
 
     { "id": 103, "type": "row", "title": "Grafana (local)", "description": "openHABian's own local Grafana instance, separate from this stack's Grafana entirely - its own native /metrics endpoint, always exposed unauthenticated by any Grafana. Go-runtime health only (no dashboard/alerting-specific metrics assumed, to avoid guessing at grafana_* metric names this session couldn't verify live against this second instance).", "gridPos": { "x": 0, "y": 32, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
     { "id": 12, "title": "Status", "type": "stat", "gridPos": { "x": 0, "y": 33, "w": 6, "h": 4 },
