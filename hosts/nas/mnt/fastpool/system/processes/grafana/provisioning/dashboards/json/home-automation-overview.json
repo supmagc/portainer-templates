@@ -26,7 +26,7 @@
     { "id": 3, "title": "Error Lines (range)", "description": "Same generic /error/i text match caveat as Container Overview's error panels - not a structured level field.",
       "type": "stat", "gridPos": { "x": 12, "y": 10, "w": 12, "h": 8 },
       "datasource": { "type": "loki", "uid": "loki" },
-      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] } }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "short", "noValue": "NO ERRORS", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] } }, "overrides": [] },
       "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "justifyMode": "auto" },
       "targets": [{ "expr": "sum(count_over_time({job=~\"openhab|events|habapp|habapp_events\"} |~ \"(?i)error\" [$__range]))", "queryType": "instant", "refId": "A" }] },
 
