@@ -175,7 +175,9 @@ services:
       - POSTGRES_NAME=bitmagnet
       - POSTGRES_USER=bitmagnet
       - POSTGRES_PASSWORD=${BITMAGNET_DB_PASSWORD}
-      - TMDB_API_KEY=${TMDB_API_KEY}   # optional, free key from themoviedb.org; improves classification
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - CLASSIFIER_WORKFLOW=custom
+      - DHT_CRAWLER_SAVE_FILES_THRESHOLD=50
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3333/"]
       interval: 1m30s

@@ -1,0 +1,77 @@
+$schema: "https://bitmagnet.io/schemas/classifier-0.1.json"
+workflows:
+  custom:
+    - run_workflow: [default]
+    # default's software match nets the installer's size against every other file
+    # (incl. zip/rar/7z, which aren't in any extension list); a large bonus-content
+    # archive can outweigh the installer and push the sum negative -> unknown.
+    - if_else:
+        condition:
+          and:
+            - "result.contentType == contentType.unknown"
+            - "torrent.files.filter(f, f.extension in extensions.software).size() > 0"
+            - "torrent.files.filter(f, f.extension in extensions.video).size() == 0"
+        if_action:
+          set_content_type: software
+    # default's video-name parser doesn't recognize "Seasons X to Y" / "Complete
+    # Box Set" / "S03 Complete" phrasing, so whole-series and whole-season releases
+    # can fall through despite being unambiguous video. These set tv_show without a
+    # parsed base title, so they won't pick up a TMDB match even on reprocess -- the
+    # full-series/full-season tags flag that no-metadata state, same idea as
+    # image-only/jav below. Series rule runs first so a "complete series" release
+    # (which often also contains the word "season") isn't caught by the season rule
+    # instead -- the unknown-only guard on the second rule makes that automatic.
+    - if_else:
+        condition:
+          and:
+            - "result.contentType == contentType.unknown"
+            - "torrent.baseName.matches(keywords.tv_full_series)"
+            - "torrent.files.filter(f, f.extension in extensions.video).size() > 0"
+        if_action:
+          - set_content_type: tv_show
+          - add_tag: [full-series]
+    - if_else:
+        condition:
+          and:
+            - "result.contentType == contentType.unknown"
+            - "torrent.baseName.matches('(?i)(s[0-9]{1,2}[ ._-]*complete|complete[ ._-]*season[ ._-]*[0-9]{1,2}|season[ ._-]*[0-9]{1,2}[ ._-]*complete)')"
+            - "torrent.files.filter(f, f.extension in extensions.video).size() > 0"
+        if_action:
+          - set_content_type: tv_show
+          - add_tag: [full-season]
+    # image-only torrents have no content_type of their own in bitmagnet and only
+    # become non-unknown via an explicit xxx keyword match; tag instead of guessing.
+    - if_else:
+        condition:
+          and:
+            - "result.contentType == contentType.unknown"
+            - "torrent.files.filter(f, f.extension in extensions.image).size() > 0"
+            - "torrent.files.filter(f, f.extension in extensions.video).size() == 0"
+        if_action:
+          add_tag: [image-only]
+    # JAV releases use studio-code naming (STARS-207, GVH646, FC2PPV-...) with no
+    # generic keyword, so they fall through the default xxx matcher. content_type
+    # is a fixed enum (no custom values) so this still sets xxx; the jav tag keeps
+    # it filterable separately. bitmagnet's `keywords:` list is a simplified glob
+    # language ( ) | * ? + # ` -- no [a-z]/{n,m}/\d -- not real regex (see
+    # https://bitmagnet.io/guides/classifier.html#keywords), so the original
+    # jav_code *keyword* entries here (real-regex syntax, since removed) silently
+    # matched nothing, ever -- confirmed 2026-09-14 via 0 jav tags despite ~250K xxx
+    # items.
+    # .matches() with a literal regex string is separately documented as full RE2
+    # regex, so that's used directly here instead of going through keywords. Regex
+    # is loose -- reprocess and spot-check matches before trusting it broadly.
+    - if_else:
+        condition:
+          and:
+            - "result.contentType == contentType.unknown"
+            - "torrent.baseName.matches('(?i)[a-z]{2,6}-?[0-9]{2,5}[a-z]{0,2}(-[a-z0-9]+)?') || torrent.baseName.matches('(?i)fc2-?ppv-?[0-9]+')"
+            - "torrent.files.filter(f, f.extension in extensions.video).size() > 0"
+        if_action:
+          - set_content_type: xxx
+          - add_tag: [jav]
+keywords:
+  tv_full_series:
+    - complete series
+    - complete box ?set
+    - complete collection
