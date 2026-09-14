@@ -58,7 +58,13 @@ Currently tracked:
   and blackbox-exporter config, and a handful of host-side scripts (`cron-wrapper.sh`, `zpool-metrics.sh`,
   `snapshot-tasks-metrics.sh`, `cloudsync-tasks-metrics.sh`) that expose TrueNAS-native
   state (ZFS pools, SMART, cron jobs, periodic snapshot/cloud-sync tasks) as node-exporter
-  textfile-collector metrics.
+  textfile-collector metrics. Also Traefik-Edge's dynamic file-provider config
+  (`processes/traefik-edge/dynamic/*.yml`) — one file per WAN-facing `*.bellecerise.be`
+  subdomain, each routing to the target container's *published host port* on
+  `192.168.1.110` (Traefik-Edge only shares the `networking` stack's `default` network, so
+  it can't reach other stacks' containers directly) via a `<name>-public` router
+  (`web-secure`, `tls.certResolver: dynu`) plus a `<name>-public-redirect` router (`web` →
+  https), since this Traefik instance has no Docker provider/labels wired up.
 - **`openhabian`** — a native (non-Docker) Raspberry Pi install (`192.168.1.154`) running
   openHAB. Tracked files are `node_exporter`/`promtail` systemd units, Promtail's scrape
   config, and the Caddy `Caddyfile` (reverse-proxies openHAB plus `grafana.` / `influx.`
