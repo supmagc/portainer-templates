@@ -1,0 +1,28 @@
+http:
+  routers:
+    emby-public:
+      rule: "Host(`emby.bellecerise.be`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      service: emby-public
+
+    emby-public-redirect:
+      rule: "Host(`emby.bellecerise.be`)"
+      entryPoints:
+        - web
+      middlewares:
+        - emby-public-https
+      service: emby-public
+
+  middlewares:
+    emby-public-https:
+      redirectScheme:
+        scheme: https
+
+  services:
+    emby-public:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:8096"

@@ -1,0 +1,28 @@
+http:
+  routers:
+    navidrome-public:
+      rule: "Host(`navidrome.bellecerise.be`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      service: navidrome-public
+
+    navidrome-public-redirect:
+      rule: "Host(`navidrome.bellecerise.be`)"
+      entryPoints:
+        - web
+      middlewares:
+        - navidrome-public-https
+      service: navidrome-public
+
+  middlewares:
+    navidrome-public-https:
+      redirectScheme:
+        scheme: https
+
+  services:
+    navidrome-public:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:4533"

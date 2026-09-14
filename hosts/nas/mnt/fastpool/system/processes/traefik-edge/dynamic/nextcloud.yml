@@ -1,0 +1,51 @@
+http:
+  routers:
+    nextcloud-public:
+      rule: "Host(`nextcloud.bellecerise.be`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      service: nextcloud-public
+      priority: 1
+
+    nextcloud-public-redirect:
+      rule: "Host(`nextcloud.bellecerise.be`)"
+      entryPoints:
+        - web
+      middlewares:
+        - nextcloud-public-https
+      service: nextcloud-public
+
+    # OnlyOffice reachable ONLY under this path, on Nextcloud's own domain
+    onlyoffice-via-nextcloud:
+      rule: "Host(`nextcloud.bellecerise.be`) && PathPrefix(`/onlyoffice-cdn/`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      middlewares:
+        - onlyoffice-strip-prefix
+      service: onlyoffice-internal
+      priority: 10
+
+  middlewares:
+    nextcloud-public-https:
+      redirectScheme:
+        scheme: https
+
+    onlyoffice-strip-prefix:
+      stripPrefix:
+        prefixes:
+          - "/onlyoffice-cdn"
+
+  services:
+    nextcloud-public:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:5659"
+
+    onlyoffice-internal:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:5658"

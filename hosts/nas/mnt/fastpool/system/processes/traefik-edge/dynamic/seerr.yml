@@ -1,0 +1,28 @@
+http:
+  routers:
+    seerr-public:
+      rule: "Host(`seerr.bellecerise.be`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      service: seerr-public
+
+    seerr-public-redirect:
+      rule: "Host(`seerr.bellecerise.be`)"
+      entryPoints:
+        - web
+      middlewares:
+        - seerr-public-https
+      service: seerr-public
+
+  middlewares:
+    seerr-public-https:
+      redirectScheme:
+        scheme: https
+
+  services:
+    seerr-public:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:5055"
