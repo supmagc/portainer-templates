@@ -41,13 +41,13 @@
       "fieldConfig": { "defaults": { "unit": "dtdhms", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
       "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
       "targets": [{ "expr": "time() - node_boot_time_seconds{job=\"node\"}", "instant": true, "refId": "A" }] },
-    { "id": 7, "title": "Physical NIC Throughput (bits/sec)", "description": "Assumes eno*/eth0 are the real physical uplinks - excludes docker0, the per-stack br-* bridges (one per docker-compose project), and br0. Adjust the device filter if that assumption is wrong for this box's actual NIC layout.",
+    { "id": 7, "title": "Physical NIC Throughput (bits/sec)", "description": "Excludes loopback, docker0, the per-stack br-* bridges (one per docker-compose project), br0, and veth* pairs instead of allowlisting a physical device name - stays correct across NIC renames. Requires node-exporter on network_mode: host (see compose/docker-compose-monitoring.yml) - on the bridge network it only ever sees its own veth, not real host NICs.",
       "type": "timeseries", "gridPos": { "x": 0, "y": 5, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } }, "overrides": [] },
       "targets": [
-        { "expr": "rate(node_network_receive_bytes_total{job=\"node\", device=~\"eno.*|eth0\"}[$__rate_interval]) * 8", "legendFormat": "{{device}} in", "refId": "A" },
-        { "expr": "rate(node_network_transmit_bytes_total{job=\"node\", device=~\"eno.*|eth0\"}[$__rate_interval]) * 8", "legendFormat": "{{device}} out", "refId": "B" }
+        { "expr": "rate(node_network_receive_bytes_total{job=\"node\", device!~\"lo|docker0|br-.*|br0|veth.*\"}[$__rate_interval]) * 8", "legendFormat": "{{device}} in", "refId": "A" },
+        { "expr": "rate(node_network_transmit_bytes_total{job=\"node\", device!~\"lo|docker0|br-.*|br0|veth.*\"}[$__rate_interval]) * 8", "legendFormat": "{{device}} out", "refId": "B" }
       ] },
 
     { "id": 101, "type": "row", "title": "ZFS", "gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },

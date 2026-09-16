@@ -313,6 +313,7 @@ services:
       - ND_LASTFM_APIKEY=${NAVIDROME_LASTFM_API_KEY}
       - ND_LASTFM_SECRET=${NAVIDROME_LASTFM_SECRET}
       - ND_AGENTS=artist-nfo-metadata,apple-music,lastfm,listenbrainz
+      - ND_PROMETHEUS_ENABLED=true
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:4533/ping || exit 1
       interval: 1m30s

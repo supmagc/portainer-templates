@@ -167,8 +167,7 @@ services:
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter
-    networks:
-      - default
+    network_mode: host
     pull_policy: missing
     restart: unless-stopped
     labels:

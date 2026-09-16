@@ -10,7 +10,9 @@ scrape_configs:
 
   - job_name: node
     scrape_interval: 15s
-    static_configs: [{targets: ["node-exporter:9100"], labels: {instance: "nas"}}]
+    # node-exporter runs with network_mode: host (needs the host netns to see eno4
+    # etc.) so it's off the bridge network - reached by host IP, not container DNS
+    static_configs: [{targets: ["192.168.1.101:9100"], labels: {instance: "nas"}}]
 
   - job_name: cadvisor
     scrape_interval: 15s
@@ -49,6 +51,11 @@ scrape_configs:
   - job_name: emby
     scrape_interval: 60s
     static_configs: [{targets: ["emby-exporter:9162"]}]
+
+  # navidrome self-exposes /metrics (ND_PROMETHEUS_ENABLED) - see docs/multimedia.md
+  - job_name: navidrome
+    scrape_interval: 60s
+    static_configs: [{targets: ["navidrome:4533"]}]
 
   - job_name: sabnzbd
     scrape_interval: 60s

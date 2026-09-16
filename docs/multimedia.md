@@ -27,6 +27,18 @@ tdarr runs in the `utilities` stack, not `multimedia`.
   via blackbox, not a speculative exporter deployment.
 - **Emby / SABnzbd / qBittorrent** each have a dedicated exporter in the `monitoring`
   stack (alongside the nextcloud one).
+- **Navidrome** — native `/metrics` via `ND_PROMETHEUS_ENABLED=true`, no separate
+  exporter, scraped directly at `navidrome:4533` (Prometheus is already on
+  `multimedia_default`). The endpoint has no auth of its own, and Navidrome is also
+  proxied publicly through `traefik-edge` (see
+  `hosts/nas/.../traefik-edge/dynamic/navidrome.yml`), so `/metrics` is blocked at that
+  edge router (`PathPrefix` + an unroutable `ipWhiteList`) rather than hidden behind
+  Navidrome's own secret-path option (`ND_PROMETHEUS_METRICSPATH`) — this repo has no
+  env-substitution for `prometheus/config.yml`, so a secret path would have to be
+  committed there in plaintext. Metric names confirmed against Navidrome's own docs and
+  the community "Navidrome Observability" Grafana dashboard (`db_model_totals`,
+  `navidrome_info`, `http_request_count`, `media_scan_last`, `media_scans`, plus standard
+  Go/process metrics) — none of this has been checked against a live scrape yet.
 - **BitMagnet / Spotweb / PostgreSQL** dashboard wiring — see
   [monitoring.md](monitoring.md#postgresql--bitmagnet--spotweb-dashboard-data). BitMagnet
   self-exposes `/metrics`; Spotweb has no exporter (read via `mysqld-exporter`); Postgres

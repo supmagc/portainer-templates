@@ -19,7 +19,9 @@ The OpenWrt router terminates one interface per VLAN; its address on each is `.1
 | — | `wan` | — | — | PPPoE uplink |
 
 > The VLAN numbers above are the user's labels. Earlier notes recorded `admin` as 802.1Q
-> **VLAN 99** — confirm the real tag vs. the label before relying on either.
+> **VLAN 99** — confirm the real tag vs. the label before relying on either. Confirmed
+> 2026-09-15: `guest`/`work`'s real tags are **20**/**30** (from the SQM config's
+> `br-lan.20`/`br-lan.30` interfaces), not the `2`/`3` shorthand used above — same gap.
 
 Fixed device addresses:
 
@@ -68,6 +70,28 @@ UDP/161. The `guest` / `work` router IPs (`192.168.2.1` / `192.168.3.1`) still h
 `lan`→`*` forward; decide per target whether it's worth a rule or should be dropped from
 the job.
 
+## SQM (cake) — WAN and guest/work shaping
+
+`/etc/config/sqm` on the router (not tracked in this repo — router-local config) runs
+three `cake` queues:
+
+- **`eth1`/`wan`**: the actual internet-facing queue. The physical path is
+  **VDSL2 → Fritzbox (modem mode, does the DSL/ATM work) → OpenWrt `eth1` over plain
+  Ethernet → PPPoE**. Because the Fritzbox absorbs the DSL/ATM layer, the router never
+  sees ATM framing — `linklayer` must be `ethernet` (not `atm`), with `overhead 34` (the
+  standard PPPoE-over-VDSL2 value). An earlier config had `linklayer atm` / `overhead 0`,
+  which is internally inconsistent (ATM cell-quantization with no accounted overhead) and
+  wrong for this modem setup regardless — fixed 2026-09-15.
+- **`br-lan.20` (`guest`) and `br-lan.30` (`work`)**: separate per-VLAN queues, not there
+  for Wi-Fi bufferbloat but to cap how much `guest`/`work` can consume of the shared WAN
+  link so `lan`/`admin` traffic can't be starved. On a LAN-side (non-`wan`) SQM interface
+  the `download`/`upload` fields are reversed from the WAN instance: `download` throttles
+  ingress-to-router (that VLAN's client *uploads*), `upload` throttles egress-from-router
+  (that VLAN's client *downloads*). Current split: `guest` 6000/18000 (up/down),
+  `work` 18000/55000 — `work` intentionally gets a much higher ceiling than `guest`
+  (confirmed by design 2026-09-15), even though at 78-85% of the WAN's own
+  23000/65000 up/down it leaves little headroom if `work` actually maxes out.
+
 ## SNMP (switch/APs)
 
 Works end-to-end now. Root causes chained through: missing `lan`→`admin` VLAN firewall
@@ -76,6 +100,78 @@ T1600G-28PS: under **L3 FEATURES → Static Routing**, not System Info — that'
 simpler T1500 family), then finally Prometheus's default 10s scrape timeout being too
 short for the switch's full interface-table walk (fixed with `scrape_interval: 60s` /
 `scrape_timeout: 55s` on the `snmp-switch`/`snmp-ap` jobs).
+
+## SQM (traffic shaping)
+
+`/etc/config/sqm` runs `cake` on three queues, one per uplink/VLAN pair:
+
+| Queue | Interface | Download | Upload |
+|---|---|---|---|
+| `eth1` | `wan` | 65000 kbit | 23000 kbit |
+| (unnamed) | `br-lan.20` (`guest`) | 6000 kbit | 18000 kbit |
+| (unnamed) | `br-lan.30` (`work`) | 18000 kbit | 55000 kbit |
+
+The `wan` queue uses `linklayer 'atm'` with `overhead '0'` — worth revisiting if the WAN
+link type ever changes (ATM overhead accounting is PPPoA/ADSL-era; a fiber/PPPoE-only line
+wouldn't need it). SQM/cake itself was **ruled out** as a cause of the router slowdown
+below — cake doesn't do connection tracking, it only shapes/queues packets already past
+netfilter.
+
+## nf_conntrack exhaustion from BitMagnet's DHT crawler (2026-09-15)
+
+**Symptom:** internet became "excruciatingly slow" over a couple of days, never happened
+before, only fixed by a router reboot. Coincided with standing up `bitmagnet` (see
+[multimedia.md](multimedia.md#bitmagnet-classifier)).
+
+**Root cause:** `bitmagnet`'s entire function is crawling the mainline DHT network — it
+opens far more short-lived UDP sessions to random internet peers than a normal torrent
+client's incidental DHT participation. Its DHT port (`3334/udp`) is NAT'd straight out
+through the router's `wan`, so every one of those sessions is a `nf_conntrack` entry. This
+matches a well-documented OpenWrt failure mode: DHT churn overflows
+`nf_conntrack_max`, the router drops packets and degrades until reboot clears the table.
+Not SQL, not SQM — both were initially suspected and ruled out.
+
+**Diagnostics that matter here** (checked 2026-09-15, router has ~496MB RAM):
+
+- `sysctl net.netfilter.nf_conntrack_max` / `_count` / `hashsize` — compare live count to
+  max to see how close to the wall you are; `hashsize` came back numerically equal to
+  `max` (`64512`/`64512`) rather than the kernel's usual 4x ratio.
+- **`nf_conntrack_max`/`hashsize` are the kernel's own RAM-scaled automatic default, not
+  set anywhere on this router** — confirmed absent from `/etc/modules.d/nf-conntrack`
+  (loads bare `nf_conntrack`, no `hashsize=` option), `uci show firewall`/`system`, and
+  every installed package (`sqm-scripts`/`luci-app-sqm` present, but SQM doesn't touch
+  conntrack sizing; no `nlbwmon`/accounting package installed despite `nf_conntrack_acct=1`
+  being set — that's just the stock default file, not an installed tool acting on it).
+- `logread`/`dmesg` are useless for retroactively confirming "table full" — the log ring
+  buffer is RAM-only and a reboot wipes it regardless of buffer size.
+- `/etc/sysctl.d/11-nf-conntrack.conf` **ships from `base-files` and says so in its own
+  header** (`Do not edit, changes to this file will be lost on upgrades` /
+  `/etc/sysctl.conf can be used to customize sysctl settings`) — sets
+  `nf_conntrack_udp_timeout=60`/`udp_timeout_stream=180` among others. Confirmed via
+  `/etc/init.d/sysctl` that `/etc/sysctl.d/*.conf` is applied **before** `/etc/sysctl.conf`
+  in the same boot loop, so a `sysctl.conf` override of the same keys genuinely wins — the
+  header comment is accurate, not just a suggestion.
+- `/etc/sysctl.d/*` is **not** in the `sysupgrade` preserve set on this router
+  (`sysupgrade -l | grep sysctl.d` returns nothing) — don't put custom tuning there even
+  though upstream OpenWrt supports reading that directory; on this install it's
+  package-managed/ephemeral. `/etc/sysctl.conf` is the correct customization point.
+
+**Fix applied:**
+
+- `bitmagnet` service: `DHT_CRAWLER_SCALING_FACTOR=5` (default `10`, higher = more
+  aggressive) in `compose/docker-compose-downloads.yml` — throttles crawl concurrency at
+  the source. **Not yet redeployed** as of this writing.
+- Router `/etc/sysctl.conf`: raise `nf_conntrack_max` to `131072` and shorten
+  `nf_conntrack_udp_timeout`/`_udp_timeout_stream` (`30`/`120`) so DHT probe entries expire
+  faster than they can accumulate. Persistence needs verifying per-device: confirm via
+  `opkg files base-files | grep sysctl.conf` (auto-tracked conffile) and/or an explicit
+  line in `/etc/sysupgrade.conf`, then `sysupgrade -l | grep sysctl.conf` to prove it
+  before trusting the next firmware upgrade. **Not yet applied** — pending.
+
+If the slowdown recurs after both land, next step is watching `nf_conntrack_count` live
+under load (`watch -n1 'cat /proc/sys/net/netfilter/nf_conntrack_count'`) to see whether
+it's climbing again — that'd point at a lower scaling factor still, or routing bitmagnet's
+DHT egress through a VPN container instead of the home WAN directly.
 
 ## openHABian reverse proxy (Caddy) + its cert
 

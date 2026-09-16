@@ -7,6 +7,7 @@ http:
       tls:
         certResolver: dynu
       service: navidrome-public
+      priority: 1
 
     navidrome-public-redirect:
       rule: "Host(`navidrome.bellecerise.be`)"
@@ -16,10 +17,28 @@ http:
         - navidrome-public-https
       service: navidrome-public
 
+    # /metrics has no auth of its own (ND_PROMETHEUS_ENABLED) - keep it off the
+    # public internet; Prometheus still reaches it over the internal docker network.
+    navidrome-public-metrics-block:
+      rule: "Host(`navidrome.bellecerise.be`) && PathPrefix(`/metrics`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      middlewares:
+        - navidrome-metrics-deny
+      service: navidrome-public
+      priority: 10
+
   middlewares:
     navidrome-public-https:
       redirectScheme:
         scheme: https
+
+    navidrome-metrics-deny:
+      ipWhiteList:
+        sourceRange:
+          - "127.0.0.1/32"
 
   services:
     navidrome-public:
