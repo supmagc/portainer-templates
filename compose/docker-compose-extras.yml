@@ -12,13 +12,21 @@ networks:
 
 services:
   stash:
-    image: stashapp/stash:latest
+    image: ghcr.io/feederbox826/stash-s6:hwaccel
     container_name: stash
     networks:
       - default
       - utilities_default
     pull_policy: missing
     restart: unless-stopped
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -35,12 +43,13 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /mnt/fastpool/system/extras/stash/config:/root/.stash
+      - /mnt/fastpool/system/extras/stash/config:/config
       - /mnt/leftpool/extras:/data
       - /mnt/fastpool/system/extras/stash/metadata:/metadata
       - /mnt/fastpool/system/extras/stash/cache:/cache
       - /mnt/fastpool/system/extras/stash/blobs:/blobs
       - /mnt/fastpool/system/extras/stash/generated:/generated
+      - /mnt/fastpool/system/extras/stash/pip:/pip-install
       - /mnt/rightpool/backup/automated/stash:/backup
     environment:
       - STASH_STASH=/data/
@@ -48,16 +57,17 @@ services:
       - STASH_METADATA=/metadata/
       - STASH_CACHE=/cache/
       - STASH_PORT=9999
-      - USER=${APP_USER}
-      - GROUP=${APP_GROUP}
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["apk add --no-cache py3-watchdog py3-pip && pip install --no-cache-dir --break-system-packages thefuzz python-Levenshtein && exec stash"]
+      - PUID=${APP_USER}
+      - PGID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+      - INSTALL_PY_DEPS=true
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
     logging:
       driver: "json-file"
       options:
         max-file: "10"
         max-size: "2m"
-
 
   namer:
     image: ghcr.io/theporndatabase/namer:latest
