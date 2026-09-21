@@ -10,8 +10,6 @@ scrape_configs:
 
   - job_name: node
     scrape_interval: 15s
-    # node-exporter runs with network_mode: host (needs the host netns to see eno4
-    # etc.) so it's off the bridge network - reached by host IP, not container DNS
     static_configs: [{targets: ["192.168.1.101:9100"], labels: {instance: "nas"}}]
 
   - job_name: cadvisor
@@ -22,8 +20,6 @@ scrape_configs:
     scrape_interval: 30s
     static_configs: [{targets: ["rabbitmq:15692"]}]
 
-  # internal-only entrypoint (:8082), not published via ports: - reached directly
-  # over the networking_default network prometheus already attaches to
   - job_name: traefik
     scrape_interval: 30s
     static_configs: [{targets: ["traefik:8082"]}]
@@ -44,6 +40,11 @@ scrape_configs:
     scrape_interval: 30s
     static_configs: [{targets: ["postgres-exporter:9187"]}]
 
+  - job_name: dagu
+    scrape_interval: 30s
+    metrics_path: /api/v1/metrics
+    static_configs: [{targets: ["dagu:8080"]}]
+
   - job_name: nextcloud
     scrape_interval: 60s
     static_configs: [{targets: ["nextcloud-exporter:9205"]}]   # VERIFY default port
@@ -52,7 +53,6 @@ scrape_configs:
     scrape_interval: 60s
     static_configs: [{targets: ["emby-exporter:9162"]}]
 
-  # navidrome self-exposes /metrics (ND_PROMETHEUS_ENABLED) - see docs/multimedia.md
   - job_name: navidrome
     scrape_interval: 60s
     static_configs: [{targets: ["navidrome:4533"]}]
@@ -83,12 +83,6 @@ scrape_configs:
       - targets: ["exportarr-prowlarr:8081"]
         labels: {app: prowlarr}
 
-  # blackbox jobs are split by probe type (module) — Prometheus's blackbox
-  # `params.module` is job-scoped, not target-scoped, so mixed-module targets
-  # can't share one job. Targets are grouped here by which module they need,
-  # not by which service they belong to.
-
-  # plain HTTP, default redirect-following, no TLS involved
   - job_name: blackbox-http
     metrics_path: /probe
     params: {module: [http_2xx]}
@@ -106,8 +100,6 @@ scrape_configs:
       - {source_labels: [__param_target], target_label: instance}
       - {target_label: __address__, replacement: blackbox-exporter:9115}
 
-  # nextcloud-web force-redirects to https, which it doesn't serve internally
-  # (see blackbox/config.yml) — a redirect response still proves the app is up
   - job_name: blackbox-http-redirect
     metrics_path: /probe
     params: {module: [http_2xx_redirect]}
@@ -142,30 +134,11 @@ scrape_configs:
           - openhabian.bellecerise.local:443
           - grafana.openhabian.bellecerise.local:443
           - influx.openhabian.bellecerise.local:443
-          - emby.media.bellecerise.local:443
-          - nextcloud.bellecerise.local:443
-          - seerr.media.bellecerise.local:443
-          - emby.bellecerise.be:443
-          - nextcloud.bellecerise.be:443
-          - seerr.bellecerise.be:443
     relabel_configs:
       - {source_labels: [__address__], target_label: __param_target}
       - {source_labels: [__param_target], target_label: instance}
       - {target_label: __address__, replacement: blackbox-exporter:9115}
 
-  # ICMP reachability for infra hosts that have no exporter of their own.
-  # Hosts that ARE scraped/probed elsewhere (router, Pi, switch, APs) are still
-  # listed here on purpose - a ping is a cheaper, independent liveness signal
-  # than "did the full node-exporter/SNMP scrape succeed".
-  #
-  # Reachability note: blackbox-exporter runs on the NAS, which sits on `lan`
-  # (192.168.1.0/24). The 192.168.1.x targets below are same-subnet and probe
-  # directly. The 192.168.0.x (admin) targets ride the same lan->admin path SNMP
-  # uses, but that firewall rule is UDP/161-scoped - ICMP echo needs its own
-  # lan->admin allow or these page as down. The guest (192.168.2.1) / work
-  # (192.168.3.1) router interfaces are in isolated zones with no lan->* forward
-  # at all and will stay down until one is added - left in on purpose so "all
-  # endpoints" is the literal target list, comment them out to silence.
   - job_name: blackbox-icmp
     metrics_path: /probe
     params: {module: [icmp]}
@@ -213,13 +186,46 @@ scrape_configs:
       - {source_labels: [__param_target], target_label: instance}
       - {target_label: __address__, replacement: blackbox-exporter:9115}
 
+  - job_name: blackbox-traefik-http
+    metrics_path: /probe
+    params: {module: [http_2xx]}
+    scrape_interval: 30s
+    file_sd_configs:
+      - files: ["/etc/prometheus/file_sd/traefik-http.json"]
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: blackbox-exporter:9115}
+
+  - job_name: blackbox-traefik-https
+    metrics_path: /probe
+    params: {module: [http_2xx_insecure]}
+    scrape_interval: 30s
+    file_sd_configs:
+      - files: ["/etc/prometheus/file_sd/traefik-https.json"]
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: blackbox-exporter:9115}
+
+  - job_name: blackbox-traefik-tls-cert
+    metrics_path: /probe
+    params: {module: [tls_connect]}
+    scrape_interval: 5m
+    file_sd_configs:
+      - files: ["/etc/prometheus/file_sd/traefik-tls-cert.json"]
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: blackbox-exporter:9115}
+
   - job_name: openhabian-grafana
     scrape_interval: 60s
     static_configs: [{targets: ["openhabian.bellecerise.local:3000"]}]
 
   - job_name: snmp-switch
     scrape_interval: 60s
-    scrape_timeout: 55s   # full 28-port interface-table walk takes longer than the 10s default
+    scrape_timeout: 55s
     metrics_path: /snmp
     params: {module: [if_mib], auth: [public_v2_switch]}
     static_configs:
@@ -251,8 +257,8 @@ scrape_configs:
 
   - job_name: openwrt
     scrape_interval: 30s
-    static_configs: [{targets: ["192.168.1.1:9100"]}]   # port/path confirmed (default /metrics) - fill in real LAN IP once listen_interface is set to 'lan'
+    static_configs: [{targets: ["192.168.1.1:9100"]}]
 
   - job_name: openhabian
     scrape_interval: 30s
-    static_configs: [{targets: ["openhabian.bellecerise.local:9100"]}]   # fill in actual Pi address, same one used in blackbox-http above
+    static_configs: [{targets: ["openhabian.bellecerise.local:9100"]}]

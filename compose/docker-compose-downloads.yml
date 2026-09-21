@@ -186,43 +186,6 @@ services:
       retries: 6
       start_period: 30s
 
-  bitmagnet-cleanup:
-    image: postgres:17-alpine
-    container_name: bitmagnet-cleanup
-    networks:
-      - utilities_default
-    pull_policy: missing
-    restart: unless-stopped
-    user: ${APP_USER}:${APP_GROUP}
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    volumes:
-      - /mnt/fastpool/system/downloads/bitmagnet-cleanup/prune.sql:/prune.sql:ro
-    environment:
-      - TZ=${APP_TIMEZONE}
-      - PGHOST=postgres
-      - PGPORT=5432
-      - PGDATABASE=bitmagnet
-      - PGUSER=bitmagnet_cleanup
-      - PGPASSWORD=${BITMAGNET_CLEANUP_DB_PASSWORD}
-      - UNCLASSIFIED_MAX_AGE=30 days
-      - CLASSIFIED_MAX_AGE=9 months
-      - DRY_RUN=false
-    command:
-      - sh
-      - -c
-      - >
-        while true; do
-          psql -v ON_ERROR_STOP=1 -v dry_run="$$DRY_RUN" -v unclassified_age="$$UNCLASSIFIED_MAX_AGE" -v classified_age="$$CLASSIFIED_MAX_AGE" -f /prune.sql;
-          sleep 86400;
-        done
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h $$PGHOST -p $$PGPORT -d $$PGDATABASE -U $$PGUSER"]
-      interval: 5m
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
   spotweb:
     image: jgeusebroek/spotweb:latest
     container_name: spotweb

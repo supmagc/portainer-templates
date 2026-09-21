@@ -54,7 +54,7 @@ groups:
         title: ContainerCrashLooping
         condition: C
         for: 0m
-        noDataState: OK   # TargetDown already covers "the exporter is unreachable" - this just avoids duplicating that via the noisy synthetic DatasourceNoData alert
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
@@ -94,31 +94,11 @@ groups:
           summary: "Container {{ $labels.name }} is restarting repeatedly"
           description: "Container {{ $labels.name }} has restarted {{ $values.B.Value }} times in the last 15 minutes."
 
-      # ContainerCrashLooping (above) only catches containers that are *restarting*.
-      # A container whose Docker healthcheck is failing but whose process stays up
-      # never restarts on its own (restart: unless-stopped reacts to the process
-      # exiting, not to health) - so it sits there unhealthy and nothing notices.
-      # This rule closes that gap.
-      #
-      # container_health_state is a cAdvisor metric (Docker-only). Values seen on
-      # this box: -1 = no HEALTHCHECK defined, 0 = unhealthy OR still "starting",
-      # 1 = healthy. Query is `>= 0` (not `== 0`) so every health-checked container
-      # yields an alert instance - Normal at 1, Alerting at 0 - the same all-series
-      # pattern as ProbeFailing; the -1 (no-healthcheck) containers drop out since
-      # there's nothing to alert on. Threshold fires at `< 1`, i.e. exactly 0. The
-      # 10m `for:` separates a genuinely stuck container from one legitimately
-      # still in its start_period (nothing here takes >10m to go healthy).
-      #
-      # NOTE: this metric is NOT in any stock cAdvisor release (checked master +
-      # v0.49-v0.53) - the running cadvisor image is a patched/forked build even
-      # though docker-compose-monitoring.yml pins gcr.io/cadvisor/cadvisor:latest.
-      # A plain image repull would silently drop the metric; noDataState: NoData
-      # (below) surfaces that instead of hiding it. See docs/monitoring.md.
       - uid: container-unhealthy
         title: ContainerUnhealthy
         condition: C
         for: 10m
-        noDataState: NoData   # metric is present for every healthchecked container normally - no data means cadvisor is down (TargetDown covers that) or the forked image lost the metric (want to know)
+        noDataState: NoData
         execErrState: Error
         data:
           - refId: A
@@ -162,16 +142,13 @@ groups:
         title: DiskSpaceLow
         condition: C
         for: 10m
-        noDataState: OK   # see ContainerCrashLooping above - TargetDown covers exporter-unreachable already
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
             relativeTimeRange: {from: 600, to: 0}
             datasourceUid: prometheus
             model:
-              # fstype!="zfs": per-dataset % free is meaningless for ZFS - see PoolSpaceLow/
-              # PoolSpaceCritical below for the real ZFS pool-capacity check. This rule now
-              # only covers non-ZFS mounts (boot-pool overlay bits, USB, etc.).
               datasource: {type: prometheus, uid: prometheus}
               expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"}) * 100
               instant: true
@@ -209,14 +186,13 @@ groups:
         title: DiskSpaceCritical
         condition: C
         for: 5m
-        noDataState: OK   # see ContainerCrashLooping above
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
             relativeTimeRange: {from: 300, to: 0}
             datasourceUid: prometheus
             model:
-              # see DiskSpaceLow above - ZFS mounts excluded, covered by PoolSpaceCritical instead
               datasource: {type: prometheus, uid: prometheus}
               expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"}) * 100
               instant: true
@@ -294,16 +270,11 @@ groups:
           summary: "{{ $labels.instance }} unreachable"
           description: "Blackbox probe against {{ $labels.instance }} (job={{ $labels.job }}) has been failing for 3+ minutes."
 
-      # Real ZFS pool capacity, sourced from a node-exporter textfile-collector
-      # metric (zpool_capacity_percent) - see hosts/nas/mnt/fastpool/system/scripts/
-      # zpool-metrics.sh. node_filesystem_* can't be used for this: ZFS datasets
-      # share the pool's free space, so a dataset with little of its own data
-      # always reports near-100% free regardless of how full the pool actually is.
       - uid: pool-space-low
         title: PoolSpaceLow
         condition: C
         for: 10m
-        noDataState: OK   # see ContainerCrashLooping above - zpool-metrics.sh cron missing a run just means the textfile is briefly stale, not worth its own no-data alert
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
@@ -347,7 +318,7 @@ groups:
         title: PoolSpaceCritical
         condition: C
         for: 5m
-        noDataState: OK   # see PoolSpaceLow above
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
@@ -387,13 +358,11 @@ groups:
           summary: "Pool {{ $labels.pool }} is {{ $values.B.Value }}% full — act now"
           description: "ZFS pool {{ $labels.pool }} has been above 95% capacity for 5+ minutes."
 
-      # smartctl_device_smart_status is smartctl's own smart_status.passed field:
-      # 1 = passed, 0 = failed (prometheus-community/smartctl_exporter source, mineSmartStatus()).
       - uid: disk-smart-failure
         title: DiskSmartFailure
         condition: C
         for: 0m
-        noDataState: OK   # see ContainerCrashLooping above - TargetDown already watches the smartctl job itself
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
@@ -437,7 +406,7 @@ groups:
         title: DiskTemperatureHigh
         condition: C
         for: 10m
-        noDataState: OK   # see DiskSmartFailure above
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
@@ -481,7 +450,7 @@ groups:
         title: PoolDegraded
         condition: C
         for: 0m
-        noDataState: OK   # see PoolSpaceLow above
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
@@ -521,26 +490,11 @@ groups:
           summary: "Pool {{ $labels.pool }} is not ONLINE"
           description: "ZFS pool {{ $labels.pool }} is DEGRADED/FAULTED/OFFLINE/UNAVAIL/REMOVED - check `zpool status {{ $labels.pool }}` now."
 
-      # scheduled_job_* is the shared metric family every scheduled-job
-      # source in this repo writes into - see docs/monitoring.md "Scheduled
-      # jobs (unified)": cron-wrapper.sh (NAS cron jobs, source="nas-cron"),
-      # snapshot-tasks-metrics.sh (source="nas-snapshot"),
-      # cloudsync-tasks-metrics.sh (source="nas-cloudsync"), and
-      # systemd-tasks-metrics.sh on openHABian (source="openhabian-timer" for
-      # all 5 of its systemd-timer-driven jobs - amdump-openhab-dir,
-      # amandaBackupDB, acme-renew, sdrawcopy, sdrsync). One textfile-collector
-      # idiom for every source means adding a new one is always just "write
-      # the scheduled_job_* family", no rule changes here.
-      #
-      # Labels are deliberately just {source, name} - no label here is named
-      # "job", which would collide with Prometheus's own scrape-config label
-      # of that name and get silently renamed to "exported_job" (the trap the
-      # old cron_job_* metrics fell into).
       - uid: scheduled-job-stale
         title: ScheduledJobStale
         condition: C
         for: 5m
-        noDataState: OK   # TargetDown already watches every node-exporter instance itself
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
@@ -584,7 +538,7 @@ groups:
         title: ScheduledJobFailed
         condition: C
         for: 0m
-        noDataState: OK   # see ScheduledJobStale above
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
@@ -624,27 +578,11 @@ groups:
           summary: "Scheduled job {{ $labels.source }}/{{ $labels.name }} failed"
           description: "{{ $labels.source }}/{{ $labels.name }}'s last run did not succeed - check its row on the NAS Overview \"Scheduled Jobs\" table (nas-* sources) or `systemctl status {{ $labels.name }}` on the Pi (openhabian-* sources)."
 
-      # probe_ssl_earliest_cert_expiry comes from any TLS blackbox probe -
-      # dedicated coverage is blackbox-tls-cert (tls_connect module, checks
-      # reachability + expiry only), plus it comes for free from every
-      # blackbox-https target since those are also https://. No job
-      # filter here so both count - but step-ca:9000 is excluded (regex, since
-      # blackbox-tls-cert labels it `step-ca:9000` while blackbox-https labels
-      # the same listener `https://step-ca:9000/health`): the cert step-ca
-      # serves on its own API listener is self-issued with the default 24h
-      # lifetime and auto-renewed at ~16h, so it's permanently under the 7d
-      # threshold. A real failure of that self-renewal takes the CA down and
-      # trips ProbeFailing on both step-ca probes instead.
-      # Most load-bearing for openhabian's three
-      # subdomains - their shared cert is renewed nightly by acme.sh against
-      # step-ca on a documented fragile path (acme.sh must successfully stop
-      # Caddy to bind :80 for the HTTP-01 challenge; see docs/network.md) with
-      # nothing else watching for a silent renewal failure.
-      - uid: cert-expiring-soon
-        title: CertExpiringSoon
+      - uid: dagu-scheduler-down
+        title: DaguSchedulerDown
         condition: C
-        for: 0m
-        noDataState: OK   # see ContainerCrashLooping above - ProbeFailing already watches these targets being reachable at all
+        for: 5m
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
@@ -652,7 +590,95 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: (probe_ssl_earliest_cert_expiry{instance!~".*step-ca:9000.*"} - time()) / 86400
+              expr: dagu_scheduler_running
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dagu scheduler is not running"
+          description: "dagu_scheduler_running has been 0 for 5+ minutes - no Dagu DAG will fire on its cron schedule until this recovers. Check the dagu container logs."
+
+      - uid: dagu-dag-run-failed
+        title: DaguDagRunFailed
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: dagu_dag_runs_total_by_dag{status="failed"}
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dagu DAG {{ $labels.dag }} failed"
+          description: "{{ $labels.dag }} has {{ $values.B.Value }} failed run(s) today - check its history in the Dagu UI."
+
+      - uid: cert-expiring-soon
+        title: CertExpiringSoon
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: (probe_ssl_earliest_cert_expiry{job=~".*tls-cert", instance!~".*step-ca:9000.*"} - time()) / 86400
               instant: true
               refId: A
           - refId: B

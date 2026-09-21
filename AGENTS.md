@@ -76,9 +76,13 @@ living alongside the config.
 When a table panel combines more than one Prometheus query into one row per entity, use
 Grafana's `joinByField` transform with an explicit `byField` key — not `merge`, which
 breaks silently on asymmetric label sets (see docs/monitoring.md for the specific bugs this
-caused). Always exclude the `__name__` field(s) `joinByField` exposes. Watch for any label
-literally named `job` on a custom/textfile-collector metric — it collides with
-Prometheus's own scrape-config meta-label and gets silently renamed to `exported_job`.
+caused). Strip `__name__` (and any other label that isn't identical across every target,
+e.g. `datid` on only one of them) with an `organize` step placed *before* `joinByField`, not
+after — once the join runs, colliding field names from different targets already got
+renamed to `__name__ 1`/`__name__ 2` etc., so an exclude naming plain `__name__` silently
+matches nothing. See docs/monitoring.md for a worked example. Watch for any label literally
+named `job` on a custom/textfile-collector metric — it collides with Prometheus's own
+scrape-config meta-label and gets silently renamed to `exported_job`.
 
 ## Git
 

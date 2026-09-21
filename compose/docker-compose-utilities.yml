@@ -63,32 +63,39 @@ services:
         reservations:
           memory: 2G
 
-  mariadb-backup:
-    image: databack/mysql-backup:latest
-    container_name: mariadb-backup
+  dagu:
+    image: ghcr.io/dagucloud/dagu:latest
+    container_name: dagu
     networks:
       - default
     pull_policy: missing
     restart: unless-stopped
-    user: ${APP_USER_BACKUP}:${APP_GROUP_BACKUP}
     labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    secrets:
-      - mariadb-backup-pass
+      - "com.centurylinklabs.watchtower.enable=false"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.dagu-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.dagu.rule=Host(`dagu.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.dagu.entrypoints=web"
+      - "traefik.http.routers.dagu.middlewares=dagu-https-redirect"
+      - "traefik.http.routers.dagu-secure.rule=Host(`dagu.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.dagu-secure.entrypoints=web-secure"
+      - "traefik.http.routers.dagu-secure.tls=true"
+      - "traefik.http.routers.dagu-secure.tls.certresolver=stepca"
+      - "traefik.http.services.dagu.loadbalancer.server.port=8080"
     volumes:
-      - /mnt/rightpool/backup/automated/mariadb:/backup
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /mnt/fastpool/system/processes/dagu:/config
     environment:
-      DB_SERVER: mariadb
-      DB_PORT: 3306
-      DB_USER: backup
-      DB_PASS_FILE: /run/secrets/mariadb-backup-pass
-      DB_DUMP_INCLUDE: digikam,nextcloud,onlyoffice
-      #DB_DUMP_ONCE: true
-      DB_DUMP_CRON: "0 4 * * *"
-      DB_DUMP_RETENTION: 7d
-      DB_DUMP_TARGET: /backup
-      TZ: ${APP_TIMEZONE}
-    command: dump
+      - PUID=${APP_USER}
+      - PGID=${APP_GROUP}
+      - DOCKER_GID=${DOCKER_USER}
+      - TZ=${APP_TIMEZONE}
+      - DAGU_TZ=${APP_TIMEZONE}
+      - DAGU_HOME=/config
+      - DAGU_HOST=0.0.0.0
+      - DAGU_PORT=8080
+      - DAGU_AUTH_MODE=buitin
+      - DAGU_SERVER_METRICS=public
 
   postgres:
     image: ghcr.io/immich-app/postgres:17-vectorchord1.1.1-pgvector0.8.5
@@ -292,7 +299,5 @@ services:
       - /mnt/rightpool/series:/media/series
 
 secrets:
-  mariadb-backup-pass:
-    file: /mnt/fastpool/system/processes/secrets/mariadb-backup-pass.txt
   postgres-pass:
     file: /mnt/fastpool/system/processes/secrets/postgres-pass.txt

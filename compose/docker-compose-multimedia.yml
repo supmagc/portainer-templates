@@ -55,8 +55,66 @@ services:
           memory: 2G
         reservations:
           memory: 1G
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8096/emby/System/Info/Public" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  jellyfin:
+    image: linuxserver/jellyfin:latest
+    container_name: jellyfin
+    runtime: nvidia
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.jellyfin-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.jellyfin.entrypoints=web"
+      - "traefik.http.routers.jellyfin.middlewares=jellyfin-https-redirect"
+      - "traefik.http.routers.jellyfin-secure.rule=Host(`jellyfin.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.jellyfin-secure.entrypoints=web-secure"
+      - "traefik.http.routers.jellyfin-secure.tls=true"
+      - "traefik.http.routers.jellyfin-secure.tls.certresolver=stepca"
+    # host ports offset from Emby's 8096/8920 so both can run side by side during the trial
+    ports:
+      - ${NETWORK_INTERFACE}:8196:8096/tcp
+      - ${NETWORK_INTERFACE}:8921:8920/tcp
+    volumes:
+      - /mnt/fastpool/system/multimedia/jellyfin/config:/config
+      - /mnt/fastpool/system/multimedia/jellyfin/cache:/cache
+      - /mnt/fastpool/system/multimedia/jellyfin/metadata:/metadata
+      - /mnt/rightpool/backup/automated/jellyfin:/config/data/data/backups
+      - /mnt/rightpool/multimedia/movies:/mnt/movies:ro
+      - /mnt/rightpool/multimedia/series:/mnt/series:ro
+      - /mnt/rightpool/multimedia/music:/mnt/music:ro
+    environment:
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8096/health" ]
       interval: 1m30s
       timeout: 10s
       retries: 6
@@ -208,6 +266,35 @@ services:
       timeout: 10s
       retries: 6
       start_period: 30s
+
+  trailarr:
+    image: nandyalu/trailarr:latest
+    container_name: trailarr
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.trailarr-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.trailarr.rule=Host(`trailarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.trailarr.entrypoints=web"
+      - "traefik.http.routers.trailarr.middlewares=trailarr-https-redirect"
+      - "traefik.http.routers.trailarr-secure.rule=Host(`trailarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.trailarr-secure.entrypoints=web-secure"
+      - "traefik.http.routers.trailarr-secure.tls=true"
+      - "traefik.http.routers.trailarr-secure.tls.certresolver=stepca"
+    ports:
+      - ${NETWORK_INTERFACE}:7889:7889/tcp
+    volumes:
+      - /mnt/fastpool/system/multimedia/trailarr:/config
+      - /mnt/rightpool/multimedia/movies:/media/movies
+      - /mnt/rightpool/multimedia/series:/media/tv
+    environment:
+      - PGID=${APP_USER}
+      - PUID=${APP_GROUP}
+      - TZ=${APP_TIMEZONE}
 
   organizr:
     image: organizr/organizr:latest

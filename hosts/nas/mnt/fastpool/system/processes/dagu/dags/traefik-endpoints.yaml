@@ -1,0 +1,24 @@
+params:
+  - name: OUTPUT_UID
+    default: 920
+  - name: OUTPUT_GID
+    default: 920
+
+schedule: "*/15 * * * *"
+steps:
+  - id: export
+    action: docker.run
+    with:
+      image: python:3-alpine
+      network:
+        EndpointsConfig:
+          networking_default: {}
+      auto_remove: true
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/traefik-endpoints-metrics.py:/script.py:ro
+        - /mnt/fastpool/system/processes/prometheus/file_sd:/file_sd
+      container:
+        env:
+          - OUTPUT_UID=${params.OUTPUT_UID}
+          - OUTPUT_GID=${params.OUTPUT_GID}
+      command: python3 /script.py

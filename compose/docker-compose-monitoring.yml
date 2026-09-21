@@ -44,6 +44,7 @@ services:
     volumes:
       - /mnt/fastpool/system/processes/prometheus/data:/prometheus
       - /mnt/fastpool/system/processes/prometheus/config.yml:/etc/prometheus/config.yml:ro
+      - /mnt/fastpool/system/processes/prometheus/file_sd:/etc/prometheus/file_sd:ro
     command:
       - "--config.file=/etc/prometheus/config.yml"
       - "--storage.tsdb.path=/prometheus"

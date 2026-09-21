@@ -1,0 +1,42 @@
+secrets:
+  - name: PGPASSWORD
+    ref: bitmagnet-cleanup/db-password
+
+schedule: "0 3 * * *"
+steps:
+  - id: prune
+    action: postgres.query
+    retry_policy:
+      limit: 5
+      interval_sec: 30
+    with:
+      dsn: "postgres://bitmagnet_cleanup:${env.PGPASSWORD}@postgres:5432/bitmagnet"
+      timeout: 600
+      query: |
+        with latest_source as (
+          select distinct on (info_hash)
+            info_hash, updated_at as last_seen, seeders
+          from torrents_torrent_sources
+          order by info_hash, updated_at desc
+        ),
+        classified as (
+          select distinct info_hash from torrent_contents
+        ),
+        prune_candidates as (
+          select ls.info_hash
+          from latest_source ls
+          left join classified c on c.info_hash = ls.info_hash
+          where
+            (c.info_hash is null
+               and (ls.last_seen < now() - interval '30 days'
+                    or coalesce(ls.seeders, 0) = 0))
+            or (c.info_hash is not null
+               and ls.last_seen < now() - interval '9 months'
+               and coalesce(ls.seeders, 0) = 0)
+          limit 2000
+        ),
+        deleted as (
+          delete from torrents t using prune_candidates p where t.info_hash = p.info_hash
+          returning t.info_hash
+        )
+        select count(*) as deleted_count from deleted;

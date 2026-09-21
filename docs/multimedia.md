@@ -8,7 +8,7 @@ the "why" for these lives in the compose files themselves and in
 
 | Stack | Services |
 |---|---|
-| `multimedia` | Emby, Sonarr, Radarr, Lidarr, Bazarr, Organizr, Seerr, Navidrome, Ampache (trial, alongside Navidrome) |
+| `multimedia` | Emby, Jellyfin (trial, alongside Emby), Sonarr, Radarr, Lidarr, Bazarr, Trailarr, Organizr, Seerr, Navidrome, Ampache (trial, alongside Navidrome) |
 | `downloads` | SABnzbd (+ cleanup sidecar), qBittorrent, Prowlarr, Spotweb, BitMagnet |
 | `extras` | stash, namer, whisparr |
 

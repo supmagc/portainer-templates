@@ -37,14 +37,48 @@ enough that UI tuning wasn't worth losing file-based history for).
 
 ## Table panels: `merge` vs `joinByField`
 
-Several dashboards show one row per entity (disk, ZFS pool, cron job, scheduled task) by
-combining multiple Prometheus queries into a table. Grafana's `merge` transform does this
-by matching on a frame's full field signature — which silently breaks (duplicate or
-garbled rows, or stray `__name__`/`__name__1`/`__name__2...` columns) as soon as the
-queries being combined have asymmetric extra labels. **`joinByField` with an explicit
-`byField` key is the correct, robust pattern for every multi-target table panel in this
-repo** — always exclude the `__name__` field(s) it exposes (they're normally hidden under
-`merge`, but real and visible under `joinByField`).
+Several dashboards show one row per entity (disk, ZFS pool, cron job, scheduled task,
+DAG run) by combining multiple Prometheus queries into a table. Grafana's `merge`
+transform does this by matching on a frame's full field signature — which silently breaks
+(duplicate or garbled rows, or stray `__name__`/`__name__1`/`__name__2...` columns) as soon
+as the queries being combined have asymmetric extra labels. **`joinByField` with an
+explicit `byField` key is the correct, robust pattern for every multi-target table panel in
+this repo.**
+
+**The `__name__`/stray-label gotcha, and the fix that actually works:** every target's raw
+result carries `__name__` (the metric name) plus whatever labels that specific metric has —
+these are never identical across different targets (different metric names, and often
+different label sets even for the *same* metric filtered two different ways, e.g.
+`metric{status="a"}` vs `metric{status="b"}`). `joinByField` only merges the one field named
+in `byField`; every other field that collides by name across targets survives as a separate,
+unmergeable column, and Grafana disambiguates the collision by renaming them `__name__ 1`,
+`__name__ 2`, `status 1`, `status 2`, etc. **An `organize` step's `excludeByName` placed
+*after* `joinByField` can no longer catch these** — it's looking for a field literally named
+`__name__`, and that field doesn't exist anymore, only the renamed `__name__ 1`/`__name__ 2`
+does. The fix is to run `organize` (stripping `__name__` and any other non-shared label)
+*as a separate transformation step before* `joinByField`, so the collision never happens:
+
+```json
+"transformations": [
+  { "id": "organize", "options": { "excludeByName": { "__name__": true, "datid": true, "job": true, "instance": true } } },
+  { "id": "joinByField", "options": { "byField": "datname", "mode": "outer" } },
+  { "id": "organize", "options": { "renameByName": { "datname": "Database", "Value #A": "Size", "Value #B": "Connections" } } }
+]
+```
+
+Aggregating a target with `sum by (<join field>) (...)` also avoids the problem for that
+target specifically — aggregation drops `__name__` and every label not named in `by (...)`
+— but that only works when the value itself should legitimately be summed; it's not a
+substitute for the pre-join `organize` step when a target is a plain metric selector (the
+`Databases` table below combines both: `Size`/`Connections` are plain selectors that need
+the `organize` step, `Commits/s` is pre-aggregated and wouldn't need it on its own).
+
+Hit twice for real: the `Databases` table (PostgreSQL row, `utilities-overview.json`) joined
+`pg_database_size_bytes` and `pg_stat_database_numbackends` — the latter also carries a
+`datid` label the former doesn't — producing `__name__ 1`/`__name__ 2` columns until the
+pre-join `organize` was added. The Dagu `DAG Runs Today` table hit the same thing joining
+`dagu_dag_runs_total_by_dag{status="succeeded"}` against the same metric filtered to
+`status="failed"` — identical metric name, different `status` value, same collision.
 
 ## The `job` / `exported_job` label collision
 
@@ -294,17 +328,86 @@ blackbox-exporter runs on the NAS, which is on `lan` (192.168.1.0/24):
   in the target list on purpose so it's literally "all endpoints"; comment them out to
   silence.
 
-## Traefik-endpoint discovery for blackbox (planned, not built)
+## Traefik-endpoint discovery for blackbox
 
-The blackbox HTTP/TLS target lists in `prometheus/config.yml` are hand-maintained and
-already carry `# VERIFY` / `# fill in` TODOs. The intended fix is to make Traefik the
-source of truth: a host-side script (same idiom as `zpool-metrics.sh` /
-`cloudsync-tasks-metrics.sh`) polls `traefik:8080/api/http/routers` and
-`traefik-edge:8080/api/http/routers`, pulls the `Host(...)` rules out of each router, and
-writes a Prometheus `file_sd` JSON to a bind-mounted dir. `blackbox-traefik` /
-`blackbox-traefik-edge` jobs then take targets from `file_sd_configs` + the existing
-`http_2xx*` / `tls_connect` modules — add a service to a compose stack, it gets probed,
-no Prometheus edit. Not implemented yet.
+The blackbox HTTP/TLS target lists in `prometheus/config.yml` are otherwise
+hand-maintained. Traefik is the source of truth for what it's actually routing instead:
+`dagu/scripts/traefik-endpoints-metrics.py`, run every 15m by the Dagu
+`traefik-endpoints` DAG (see "Dagu (container-native scheduler)" below), polls
+`traefik:8080/api/http/routers` and `traefik-edge:8080/api/http/routers`, pulls the
+`Host(...)` rule(s) out of each enabled, non-`internal`-provider router, and writes three
+Prometheus `file_sd` JSON files to a bind-mounted dir
+(`/mnt/fastpool/system/processes/prometheus/file_sd`, mounted read-only into the
+`prometheus` container): `traefik-http.json` / `traefik-https.json` (split by whether the
+router has TLS, feeding the `blackbox-traefik-http` / `blackbox-traefik-https` jobs and
+the existing `http_2xx` / `http_2xx_insecure` modules) and `traefik-tls-cert.json` (TLS
+routers only, `host:443` targets, feeding `blackbox-traefik-tls-cert` +  `tls_connect` —
+this is the "possibly certificates" half: `tls_connect`'s `probe_ssl_earliest_cert_expiry`
+covers cert-expiry alerting for free, no separate cert-parsing metric needed). Add a
+`traefik.enable=true` service to any stack and it gets probed within 15 minutes, no
+Prometheus edit.
+
+**Pruned (2026-09-21):** all six now-redundant TLS entries were dropped from the
+hand-maintained `blackbox-tls-cert` list — the three `*.media.bellecerise.local` hosts
+(`emby`, `nextcloud`, `seerr`, fronted by `traefik`) and the three `*.bellecerise.be`
+public hosts (fronted by `traefik-edge`'s dynamic-file routers, e.g. `emby.yml`). All six
+are now covered by `blackbox-traefik-tls-cert` file_sd instead. `blackbox-http`'s
+`emby`/`rabbitmq`/`seerr` container-DNS targets stay: those probe the app directly
+(`http://emby:8096/...`), not the same thing as Traefik's own router-level probe.
+
+The public three initially looked *uncovered* by file_sd (not just duplicated) — turned
+out to be a real bug in `traefik-endpoints-metrics.py`, not a missing router. Each of
+`traefik-edge`'s dynamic-file services (`emby.yml`, `nextcloud.yml`, `seerr.yml`) defines
+**two** routers for the same `Host()`: a TLS one on `web-secure` and a plain redirect one
+on `web`. The script deduped candidate targets on `(source, host)` alone, so whichever
+router the API happened to return first for that host won — and the redirect router was
+winning, silently discarding the TLS router (and its cert) for all three. Fixed by keying
+the dedup on `(source, host, has_tls)` instead, so a host's TLS and non-TLS routers are
+tracked independently. (`navidrome.yml` has a third, unrelated router — a `PathPrefix`
+metrics-block variant — competing for the same host too; harmless since it shares the
+same underlying cert, just means the `router` label picked isn't always the "main" one.)
+
+**Known remaining duplication (by design):** every `-secure` router's cert still gets
+reported by *two* jobs — `blackbox-traefik-https` (an `https://host/` probe, reachability
+is the point, cert-expiry data is a free side effect) and `blackbox-traefik-tls-cert` (a
+dedicated `host:443` `tls_connect` probe). `CertExpiringSoon` is scoped to
+`job=~".*tls-cert"` so it only counts the dedicated one, but `ProbeFailing` (plain
+`probe_success`, no job filter) still fires on both — a real Traefik outage trips two
+alert instances per router instead of one. This mirrors the existing intentional
+dual-probe pattern for `step-ca` (see `CertExpiringSoon`'s own comment in
+`grafana/provisioning/alerting/rules.yml`) and is left alone for the same reason:
+redundant confirmation via two independent probe methods, not a bug. Revisit if the
+doubled alert-instance volume becomes noisy in practice.
+
+## Dagu (container-native scheduler)
+
+`compose/docker-compose-utilities.yml`'s `dagu` service (`ghcr.io/dagucloud/dagu`,
+exposed internally as `dagu.${NETWORK_DOMAIN}` like `phpmyadmin`/`tdarr`) replaces
+containers whose whole job was "run something on a schedule" with one-shot containers
+Dagu spins up itself via `docker.sock` (same blast-radius tradeoff as `watchtower`'s own
+socket mount). DAG definitions live in `hosts/nas/.../dagu/dags/*.yaml`, tracked in git
+(no secrets — see below); Dagu's run history/state (`/mnt/fastpool/system/processes/dagu`
+minus `dags/`) is untracked runtime state, same treatment as Prometheus/Grafana's own
+data directories.
+
+Migrated so far: `mariadb-backup` (was `DB_DUMP_CRON` baked into the
+`databack/mysql-backup` container's own env) and `bitmagnet-cleanup` (was an untracked
+`while true; do psql …; sleep 86400; done` container). Both DAGs bind-mount a
+plaintext-single-line secret file directly into the one-shot container rather than using
+Docker Compose's `secrets:` mechanism (Dagu isn't Swarm, so that doesn't apply to
+DAG-spawned containers) — `mariadb-backup` reuses the existing
+`mariadb-backup-pass.txt`; `bitmagnet-cleanup` needed a new
+`bitmagnet-cleanup-db-pass.txt` (same convention) since its old compose service got the
+password from a plain Portainer-env `${BITMAGNET_CLEANUP_DB_PASSWORD}` substitution,
+which doesn't apply to a DAG YAML file tracked in git.
+
+**Not done yet, deliberately out of scope so far:** feeding Dagu's own per-DAG run
+status (success/fail/last-run) into the shared `scheduled_job_*` metric family (see
+"Scheduled jobs (unified)" above) the way every other scheduled-job source does, and a
+direct Prometheus scrape of Dagu's own `/api/v1/metrics` for engine-level health
+(`dagu_scheduler_running` etc.). Until that's built, a DAG silently failing or Dagu
+itself going down has no alert coverage beyond whatever the DAG's own container/job
+otherwise produces — check the Dagu UI directly for now.
 
 ## Container health alerting (`ContainerUnhealthy`)
 

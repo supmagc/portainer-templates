@@ -1,0 +1,38 @@
+secrets:
+  - name: DB_PASS
+    ref: mariadb-backup/db-password
+
+params:
+  - name: OUTPUT_UID
+    default: 940
+  - name: OUTPUT_GID
+    default: 940
+  - name: RETENTION_DAYS
+    default: 7
+
+schedule: "0 4 * * *"
+steps:
+  - id: dump
+    action: docker.run
+    with:
+      image: mariadb:lts
+      network:
+        EndpointsConfig:
+          utilities_default: {}
+      auto_remove: true
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/mariadb-backup.sh:/mariadb-backup.sh:ro
+        - /mnt/rightpool/backup/automated/mariadb:/backup
+      container:
+        env:
+          - TZ=Europe/Brussels
+          - DB_SERVER=mariadb
+          - DB_PORT=3306
+          - DB_USER=backup
+          - DB_PASS=${env.DB_PASS}
+          - DB_DUMP_INCLUDE=digikam,nextcloud,onlyoffice
+          - DB_DUMP_TARGET=/backup
+          - DB_DUMP_RETENTION_DAYS=${params.RETENTION_DAYS}
+          - OUTPUT_UID=${params.OUTPUT_UID}
+          - OUTPUT_GID=${params.OUTPUT_GID}
+      command: sh /mariadb-backup.sh
