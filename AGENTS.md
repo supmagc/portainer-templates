@@ -33,17 +33,21 @@ say so explicitly when telling the user a change needs one.
 ## Secret handling — non-negotiable
 
 - **Never commit secrets.** No tokens, passwords, API keys, or connection strings under
-  `hosts/`. If a config file needs a secret to function, either template it with a
-  placeholder the host fills in, or keep the whole file host-only.
+  `hosts/`. Template config files with a `{{TOKEN_NAME}}` placeholder (see `.token.example`
+  for the list) instead of a real value or an ad-hoc `CHANGE_ME`. `scripts/deploy.ps1`
+  fills placeholders in from the git-ignored `.tokens` file (root, `KEY=value` per line,
+  copy `.token.example` to start one) before scp'ing, and **aborts the deploy** if a
+  `{{...}}` survives substitution rather than ship a literal placeholder to a host — so a
+  file can be redeployed freely without ever stomping the real value already on the host.
 - **Never persist a secret the user pastes into chat**, into a file, memory, or anywhere
   else — flag it immediately instead (e.g. "that TrueNAS output includes a live B2 key —
   I won't write it anywhere"). This has come up for real: a pasted `midclt cloudsync.query`
   response contained a live Backblaze B2 credential; it was flagged and never touched by
   the parser scripts that consume that same command's output.
-- **`scratchpad/`** is git-ignored — that's where secrets, host-only files, and anything
-  under manual/UI-only control (e.g. Grafana's contact point / notification policy) live
-  or get drafted before a secret-free version graduates to `hosts/`. `.mcp.json` and
-  `.deploy-state.json` are also git-ignored for the same reason (real tokens, local state).
+- Real secrets and local state live in **root-level git-ignored files**, not
+  `scratchpad/` (that's for temporary files, plans, and drafts) — `.tokens` (deploy
+  substitution values), `.mcp.json` (Grafana service-account token), and
+  `.deploy-state.json` (local deploy-picker state).
 - Before writing a script that touches TrueNAS's `midclt` output or any similar API that
   returns credentials mixed in with other data, read the *whole* response shape first and
   design the parser to explicitly avoid the credential-bearing fields (see

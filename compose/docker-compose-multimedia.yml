@@ -270,6 +270,7 @@ services:
   trailarr:
     image: nandyalu/trailarr:latest
     container_name: trailarr
+    runtime: nvidia
     networks:
       - default
     pull_policy: missing
@@ -295,6 +296,15 @@ services:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
       - TZ=${APP_TIMEZONE}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   organizr:
     image: organizr/organizr:latest

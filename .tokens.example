@@ -1,0 +1,8 @@
+# Copy this file to .tokens (git-ignored) and fill in real values.
+# scripts/deploy.ps1 replaces {{KEY}} placeholders in hosts/ files with these
+# values before scp'ing, and aborts the deploy if a {{...}} placeholder survives
+# substitution instead of shipping a literal placeholder to a host.
+#
+# Format: KEY=value, one per line. Lines starting with # are ignored.
+
+NAMER_PORNDB_TOKEN=

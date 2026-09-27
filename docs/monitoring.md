@@ -401,6 +401,42 @@ DAG-spawned containers) — `mariadb-backup` reuses the existing
 password from a plain Portainer-env `${BITMAGNET_CLEANUP_DB_PASSWORD}` substitution,
 which doesn't apply to a DAG YAML file tracked in git.
 
+`themerr-fetch` (new, not a migration) downloads theme.mp3 files from ThemerrDB into
+each Radarr/Sonarr movie/series folder, nightly at 03:30. No custom image or manual build
+step: a `vendor` step copies the static `ffmpeg`/`ffprobe` (`mwader/static-ffmpeg`) and
+`deno` (`denoland/deno:bin`, the JS runtime yt-dlp needs for some YouTube signatures)
+binaries out of their upstream images into the shared `/data` volume before `fetch` runs
+`dagu/scripts/themerr_fetch.py` against a stock `python:3.12-slim` with `/data` on `PATH`.
+Both source images are `FROM scratch` with no shell inside them, so `vendor` can't
+`docker.run` a command *in* them — it uses `docker create`+`docker cp` (via a
+`docker:cli` helper) to read their filesystem without executing anything inside them.
+Every image here is pulled once and cached by Docker, so deploying this DAG is just:
+push the script + both DAG files — nothing built by hand on `nas`, and no apt-get cost on
+every run. yt-dlp itself is still self-hosted by the script the same way it always was
+(`ensure_ytdlp`, downloaded from its own GitHub releases and auto-updated). It joins
+`multimedia_default` to reach `radarr`/`sonarr`/`emby` by container name — Dagu itself
+only sits on `utilities_default`. Its three API keys use Dagu's `secrets:` + `ref:`
+mechanism (`themerr-fetch/radarr-api-key` etc.), same as `mariadb-backup`/
+`bitmagnet-cleanup` above — registered by hand once through the Dagu UI/API, the one
+manual step this DAG still has. (Dagu's secrets spec confirms `ref:` requires a running
+server and can't be satisfied by deploying files alone; the file-backed `provider: file`
+alternative would avoid that, but this repo prefers `ref:` for consistency with the other
+two DAGs' secrets.) Defaults to refreshing Emby's library (`MEDIASERVER_TYPE=emby`); switch to
+Jellyfin by changing that one env line if the trial becomes primary. Written files land
+root-owned (container runs as root, `UMASK=002` keeps them world-readable) — add a
+`container.user` override in the DAG if that ever needs to match the media UID/GID
+instead.
+
+Rate-limiting: `MAX_DOWNLOADS` (a run param, default 100) caps YouTube downloads per
+invocation so a cold cache or a post-ThemerrDB-outage run (which clears cached negative
+lookups) can't blast through an entire library's worth of yt-dlp downloads in one run and
+get the NAS's IP flagged — pass `MAX_DOWNLOADS=0` for a deliberate one-off catch-up run.
+`DOWNLOAD_DELAY` (5s, hardcoded in the DAG's env) already throttled downloads themselves;
+`THEMERRDB_DELAY` (0.3s, script default) was added alongside the cap to also throttle the
+per-item ThemerrDB JSON lookups, which previously ran back-to-back with no delay at all —
+lighter than a YouTube download but still someone's small self-hosted API, not a CDN built
+for bursts.
+
 **Not done yet, deliberately out of scope so far:** feeding Dagu's own per-DAG run
 status (success/fail/last-run) into the shared `scheduled_job_*` metric family (see
 "Scheduled jobs (unified)" above) the way every other scheduled-job source does, and a

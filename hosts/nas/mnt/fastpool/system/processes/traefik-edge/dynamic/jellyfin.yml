@@ -1,0 +1,28 @@
+http:
+  routers:
+    jellyfin-public:
+      rule: "Host(`jellyfin.bellecerise.be`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      service: jellyfin-public
+
+    jellyfin-public-redirect:
+      rule: "Host(`jellyfin.bellecerise.be`)"
+      entryPoints:
+        - web
+      middlewares:
+        - jellyfin-public-https
+      service: jellyfin-public
+
+  middlewares:
+    jellyfin-public-https:
+      redirectScheme:
+        scheme: https
+
+  services:
+    jellyfin-public:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:8196"

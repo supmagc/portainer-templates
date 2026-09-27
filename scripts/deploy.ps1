@@ -49,6 +49,39 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $HostsDir = Resolve-Path (Join-Path $ScriptDir '..\hosts')
 $StateFile = Join-Path $ScriptDir '..\.deploy-state.json'
+$TokensFile = Join-Path $ScriptDir '..\.tokens'
+
+# --- secret templating: {{TOKEN_NAME}} in a hosts\ file is filled in from .tokens
+# (git-ignored, KEY=value per line) before scp'ing. See .token.example for the format.
+$tokens = @{}
+if (Test-Path $TokensFile) {
+    foreach ($line in Get-Content $TokensFile) {
+        if ($line -match '^\s*#' -or $line -notmatch '\S') { continue }
+        if ($line -match '^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$') {
+            $tokens[$Matches[1]] = $Matches[2]
+        }
+    }
+}
+
+function Resolve-DeployFile([string]$LocalFile) {
+    $content = $null
+    try { $content = Get-Content -Path $LocalFile -Raw -ErrorAction Stop } catch { }
+    if ($null -eq $content -or $content -notmatch '\{\{') {
+        return $LocalFile
+    }
+    $substituted = [regex]::Replace($content, '\{\{([A-Za-z0-9_]+)\}\}', {
+        param($m)
+        $name = $m.Groups[1].Value
+        if ($tokens.ContainsKey($name)) { $tokens[$name] } else { $m.Value }
+    })
+    if ($substituted -match '\{\{[A-Za-z0-9_]+\}\}') {
+        $missing = ([regex]::Matches($substituted, '\{\{[A-Za-z0-9_]+\}\}') | ForEach-Object { $_.Value } | Select-Object -Unique) -join ', '
+        Write-Error "Unresolved template token(s) in $LocalFile - add them to .tokens before deploying: $missing"
+    }
+    $tempFile = [System.IO.Path]::GetTempFileName()
+    Set-Content -Path $tempFile -Value $substituted -NoNewline -Encoding utf8NoBOM
+    return $tempFile
+}
 
 function Get-SshConfigHosts {
     $sshConfig = Join-Path $HOME '.ssh\config'
@@ -194,7 +227,9 @@ if ($useStaging) {
         $stageParent = $stagePath -replace '/[^/]*$', ''
         Write-Host "==> $localFile -> ${DeployHost}:/$relative  (staged)"
         ssh $DeployHost "mkdir -p '$stageParent'"
-        scp $localFile "${DeployHost}:$stagePath"
+        $sendFile = Resolve-DeployFile $localFile
+        scp $sendFile "${DeployHost}:$stagePath"
+        if ($sendFile -ne $localFile) { Remove-Item $sendFile -ErrorAction SilentlyContinue }
     }
     Write-Host ""
     Write-Host "Applying as root on $DeployHost (enter your sudo password if prompted):"
@@ -206,7 +241,9 @@ if ($useStaging) {
         $remoteDir = $remotePath -replace '/[^/]*$', ''
         Write-Host "==> $localFile -> ${DeployHost}:$remotePath"
         ssh $DeployHost "mkdir -p '$remoteDir'"
-        scp $localFile "${DeployHost}:$remotePath"
+        $sendFile = Resolve-DeployFile $localFile
+        scp $sendFile "${DeployHost}:$remotePath"
+        if ($sendFile -ne $localFile) { Remove-Item $sendFile -ErrorAction SilentlyContinue }
     }
 }
 

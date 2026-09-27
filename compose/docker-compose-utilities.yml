@@ -293,7 +293,7 @@ services:
       - /mnt/fastpool/system/processes/tdarr/configs:/app/configs
       - /mnt/fastpool/system/processes/tdarr/logs:/app/logs
       - /mnt/fastpool/system/processes/tdarr/temp:/temp
-      - /mnt/fastpool/cache/tdarr:/media/transcoding
+      - /mnt/fastpool/system/processes/tdarr/cache:/media/transcoding
       - /mnt/leftpool/extras:/media/extras
       - /mnt/rightpool/movies:/media/movies
       - /mnt/rightpool/series:/media/series
