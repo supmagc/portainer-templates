@@ -403,7 +403,7 @@ which doesn't apply to a DAG YAML file tracked in git.
 
 `themerr-fetch` (new, not a migration) downloads theme.mp3 files from ThemerrDB into
 each Radarr/Sonarr movie/series folder, nightly at 03:30. No custom image or manual build
-step: a `vendor` step copies the static `ffmpeg`/`ffprobe` (`mwader/static-ffmpeg`) and
+step: a `vendor` step copies the static `ffmpeg` (`mwader/static-ffmpeg`) and
 `deno` (`denoland/deno:bin`, the JS runtime yt-dlp needs for some YouTube signatures)
 binaries out of their upstream images into the shared `/data` volume before `fetch` runs
 `dagu/scripts/themerr_fetch.py` against a stock `python:3.12-slim` with `/data` on `PATH`.
@@ -422,10 +422,17 @@ manual step this DAG still has. (Dagu's secrets spec confirms `ref:` requires a 
 server and can't be satisfied by deploying files alone; the file-backed `provider: file`
 alternative would avoid that, but this repo prefers `ref:` for consistency with the other
 two DAGs' secrets.) Defaults to refreshing Emby's library (`MEDIASERVER_TYPE=emby`); switch to
-Jellyfin by changing that one env line if the trial becomes primary. Written files land
-root-owned (container runs as root, `UMASK=002` keeps them world-readable) — add a
-`container.user` override in the DAG if that ever needs to match the media UID/GID
-instead.
+Jellyfin by changing that one env line if the trial becomes primary.
+
+Ownership: both steps run as root (needed for `vendor`'s docker-socket access and for
+the arbitrary-uid `chown`s below — a non-root process can't `chown` to a uid/gid it
+doesn't already own or belong to), but the script
+hands its own files to specific NAS accounts afterward rather than leaving them
+root-owned: `chown_data_dir()` gives everything under `/data` (state, vendored
+`yt-dlp`/`ffmpeg`/`deno`) to `nas_processes` (`PROCESS_UID`/`PROCESS_GID`
+params, default 920:920), and each written `theme.mp3` is `chown`'d individually to
+`nas_multimedia` (`MEDIA_UID`/`MEDIA_GID` params, default 910:910) right after it's
+written.
 
 Rate-limiting: `MAX_DOWNLOADS` (a run param, default 100) caps YouTube downloads per
 invocation so a cold cache or a post-ThemerrDB-outage run (which clears cached negative
@@ -437,6 +444,65 @@ per-item ThemerrDB JSON lookups, which previously ran back-to-back with no delay
 lighter than a YouTube download but still someone's small self-hosted API, not a CDN built
 for bursts.
 
+(Backdrop/theme-video generation was briefly built into this DAG, then split out to its
+own job since ThemerrDB has no video data at all - see the `backdrop-generate` DAG below,
+which extracts clips from the movie/episode files themselves instead of downloading
+anything.)
+
+`backdrop-generate` builds Emby/Jellyfin "theme videos" (`backdrops/theme.mp4`) - a
+separate feature from theme songs, and a separate DAG, because there's no ThemerrDB
+equivalent for video: the two real precedents for this
+([emby-theme-maker](https://github.com/Oratorian/emby-theme-maker),
+[backdrop-generator](https://hub.docker.com/r/vlx42/backdrop-generator)) both generate
+the clip locally from the media file itself rather than downloading one, so this DAG
+does the same. Runs nightly at 05:00, deliberately after `themerr-fetch` (03:30) since
+both walk the same Radarr/Sonarr libraries, and after most other NAS activity since it
+shares the P400 GPU with Tdarr/Emby/Jellyfin transcoding.
+
+Clip selection, per source file: one ffmpeg scene-cut scan (`select='gt(scene,X)'`,
+downscaled first purely for speed) run *locally* around each of `N_SAMPLES` (default
+10) target points spread across the file - not the whole file at once, which would
+mean decoding entire multi-hour movies for no reason - then a `SAMPLE_DURATION`s
+(default 3s) window is accepted only if it contains no detected cut *and* passes a
+motion check (three sampled frames' pixel-diff must clear `MIN_MOTION`, so a technically
+cut-free but visually static shot - e.g. a dialogue scene - doesn't get picked either).
+If no window near a target passes both checks, search outward up to `SEARCH_RADIUS`
+before giving up on that one sample slot rather than forcing a bad clip in. Accepted
+clips are extracted silently (`-an` - a jump-cut montage's original audio would clash
+with both itself and `theme.mp3`) and concatenated into the final file.
+
+Movies sample directly from their one file. A series has no single "the video" to
+sample from, so it picks `SERIES_EPISODES` (default 3) representative episodes spread
+across the show (skipping specials and the pilot, which is often visually atypical),
+splits the sample budget across them, and concatenates everything into one series-root
+`backdrops/theme.mp4` - no per-season backdrops. This needs Sonarr's episode-level API
+(`/api/v3/episode` joined with `/api/v3/episodefile` by `episodeFileId`), which
+`themerr-fetch` never needed since it only ever wrote into the series *folder*.
+
+GPU: unlike `themerr-fetch`'s vendored `mwader/static-ffmpeg` (confirmed to have zero
+NVIDIA/NVENC support - it's a portable static build, and NVENC fundamentally can't be
+static since it needs the host's own driver libraries injected at container start),
+this DAG runs `jrottenberg/ffmpeg:8.0-nvidia` directly as its image with `host.Runtime:
+nvidia` + `NVIDIA_VISIBLE_DEVICES`/`NVIDIA_DRIVER_CAPABILITIES` (the same mechanism
+`docker-compose-multimedia.yml`'s `runtime: nvidia` services already use for this same
+P400). Because that image is dynamically linked against Ubuntu's own libraries, it
+can't be vendored out via `docker cp` the way the static binaries are elsewhere - it
+has to be the step's own image, with `apt-get install python3` on every run (no static
+alternative exists here, unlike the audio DAG's ffmpeg). The image's own `ENTRYPOINT
+["ffmpeg"]` has to be cleared (`container.entrypoint: []`) or the step's command would
+run as arguments *to* ffmpeg instead of replacing it. `h264_nvenc` is used for every
+encode (clip extraction and, if straight `-c copy` concat ever fails, the fallback
+re-encode too) with an automatic `libx264` CPU fallback if NVENC itself fails for any
+item.
+
+Ownership and the `.nobackdrop` skip file work exactly like `themerr-fetch`'s
+`theme.mp3`/`.nothemerr` (see [[project_nas_users_groups]] for the UID:GID table) -
+`chown_data_dir()` to `nas_processes`, each written backdrop `chown`'d to
+`nas_multimedia`. Regeneration has no upstream URL to compare against like ThemerrDB
+gives the audio job, so it's triggered instead by the source file(s)' own size/mtime
+changing (e.g. a quality re-encode) via a `sources` fingerprint list recorded per
+folder in `state.json`.
+
 **Not done yet, deliberately out of scope so far:** feeding Dagu's own per-DAG run
 status (success/fail/last-run) into the shared `scheduled_job_*` metric family (see
 "Scheduled jobs (unified)" above) the way every other scheduled-job source does, and a
@@ -444,6 +510,41 @@ direct Prometheus scrape of Dagu's own `/api/v1/metrics` for engine-level health
 (`dagu_scheduler_running` etc.). Until that's built, a DAG silently failing or Dagu
 itself going down has no alert coverage beyond whatever the DAG's own container/job
 otherwise produces — check the Dagu UI directly for now.
+
+### library-cleanup
+
+Unlike `themerr-fetch`/`backdrop-generate` (which add files), `library-cleanup` finds and
+removes cruft that's accumulated across the library's history — OS artifacts (`Thumbs.db`,
+`desktop.ini`), re-scrape backup files (`*.nfo-orig`/`.bak`/`.orig`), stale partial
+downloads, and broken pre-automation `backdrops/theme.html` stubs (an old downloader's
+saved HTML error page, from before `backdrop-generate` existed and started writing real
+`theme.mp4` clips). See [multimedia-library-layout.md](multimedia-library-layout.md) for
+the full category table and the canonical layout it's checking against.
+
+Because its job is deletion rather than addition, it inverts the other two DAGs' `DRY_RUN`
+default: `APPLY` defaults to `"false"` (report-only) rather than defaulting to live. Beyond
+plain deletion it also consolidates fanart (moves loose numbered `fanartN.*` files into
+`extrafanart/`, drops exact-hash duplicates including music's legacy `extrathumbs/`, and
+patches the handful of Emby-written nfos that store a literal path to one of those images)
+and merges folders that differ only by case - both found live in this library (see
+[multimedia-library-layout.md](multimedia-library-layout.md) for the concrete examples and
+the full conflict-handling rules). Findings that need a human judgment call - folders with
+zero or multiple video files, oversized backdrops, a `backdrops/theme.mp4`/`.mkv` that's
+actually a frozen image throughout (sampled frame-to-frame pixel-diff, same technique
+`backdrop-generate`'s own motion check uses - confirmed live against `Matrix Resurrections,
+The (2021)`'s backdrop, a 60s/3.8MB clip that's really a still image), episodes missing an
+`.nfo` - are written to the report but never auto-deleted, regardless of `APPLY`.
+
+It's a plain filesystem walk with no Radarr/Sonarr/Emby API calls (nothing here needs their
+metadata), so it needs no secrets and no `multimedia_default` network join - the one
+exception is the static-backdrop check, which needs `ffmpeg`/`ffprobe` to decode sample
+frames, so the step installs it inline (`apt-get install ffmpeg` into the `python:3.12-slim`
+image, same inline-install pattern `backdrop-generate` uses for `python3`) rather than
+switching the whole DAG to an ffmpeg-based image over a check that's a small fraction of its
+job; missing `ffmpeg` degrades to skipping just that one check with a warning; no CUDA/GPU
+needed since it's a 32x32 frame probe on already-small clips, not an encode. Runs weekly
+(Sundays 06:00), after the nightly theme-song/backdrop jobs, since it's a full-library scan
+rather than an incremental one.
 
 ## Container health alerting (`ContainerUnhealthy`)
 

@@ -214,7 +214,7 @@ def ensure_ytdlp() -> None:
     elif YTDLP_AUTOUPDATE:
         subprocess.run([str(YTDLP), "-U"], check=False,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    ver = subprocess.run([str(YTDLP), "--version"], capture_output=True, text=True)
+    ver = subprocess.run([str(YTDLP), "--version"], capture_output=True, text=True, errors="replace")
     log.info("yt-dlp %s", ver.stdout.strip() or "?")
 
 
@@ -225,7 +225,7 @@ def fetch_theme(url: str, dest: Path) -> bool:
                "--quiet", "--no-warnings", "-o", f"{tmp}/src.%(ext)s", url]
         if YTDLP_COOKIES:
             cmd[1:1] = ["--cookies", YTDLP_COOKIES]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
         src = next(Path(tmp).glob("src.*"), None)
         if r.returncode != 0 or src is None:
             log.error("  yt-dlp failed: %s", (r.stderr or r.stdout).strip()[-400:])
@@ -244,7 +244,7 @@ def fetch_theme(url: str, dest: Path) -> bool:
         if filters:
             cmd += ["-af", ",".join(filters)]
         cmd += ["-ar", "44100", "-c:a", "libmp3lame", "-q:a", MP3_QUALITY, str(out)]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
         if r.returncode != 0 or not out.exists():
             log.error("  ffmpeg failed: %s", r.stderr.strip()[-400:])
             return False

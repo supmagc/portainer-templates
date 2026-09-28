@@ -44,6 +44,12 @@ tdarr runs in the `utilities` stack, not `multimedia`.
   self-exposes `/metrics`; Spotweb has no exporter (read via `mysqld-exporter`); Postgres
   gets a new `postgres-exporter`.
 
+## Library layout and cleanup
+
+See [multimedia-library-layout.md](multimedia-library-layout.md) for the canonical on-disk
+shape of `movies`/`series`/`music` and what the `library-cleanup` Dagu DAG treats as safe
+to delete vs. report-only.
+
 ## BitMagnet classifier
 
 `hosts/nas/.../downloads/bitmagnet/.config/bitmagnet/classifier.yml` extends the

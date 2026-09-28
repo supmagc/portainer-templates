@@ -1,0 +1,35 @@
+params:
+  # deletion DAG - defaults to report-only, unlike themerr-fetch/backdrop-generate's
+  # live-by-default DRY_RUN. Set APPLY=true only after reviewing a report-only run's
+  # /mnt/fastpool/system/processes/dagu/job-data/library-cleanup/latest.json.
+  - name: APPLY
+    default: "false"
+
+schedule: "0 6 * * 0"
+max_active_runs: 1
+
+# See docs/multimedia.md's library-cleanup section and docs/multimedia-library-layout.md
+# for the category table this script implements.
+steps:
+  - id: scan
+    action: docker.run
+    with:
+      image: python:3.12-slim
+      pull: missing
+      auto_remove: true
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/library_cleanup.py:/app/library_cleanup.py:ro
+        - /mnt/fastpool/system/processes/dagu/job-data/library-cleanup:/data
+        - /mnt/rightpool/multimedia/movies:/media/movies
+        - /mnt/rightpool/multimedia/series:/media/tv
+        - /mnt/rightpool/multimedia/music:/media/music
+      container:
+        env:
+          - APPLY=${params.APPLY}
+          - DEBIAN_FRONTEND=noninteractive
+      command: >-
+        sh -c 'set -e;
+        apt-get update -qq;
+        apt-get install -y -qq --no-install-recommends ffmpeg >/dev/null;
+        python3 /app/library_cleanup.py'
+    output: LIBRARY_CLEANUP_RESULT
