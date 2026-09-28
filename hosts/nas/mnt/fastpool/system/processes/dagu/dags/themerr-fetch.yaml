@@ -3,8 +3,8 @@ secrets:
     ref: themerr-fetch/radarr-api-key
   - name: SONARR_API_KEY
     ref: themerr-fetch/sonarr-api-key
-  - name: EMBY_API_KEY
-    ref: themerr-fetch/emby-api-key
+  - name: MEDIASERVER_API_KEY
+    ref: themerr-fetch/mediaserver-api-key
 
 params:
   - name: DRY_RUN
@@ -12,6 +12,14 @@ params:
   # override with MAX_DOWNLOADS=0 for a one-off manual catch-up run
   - name: MAX_DOWNLOADS
     default: "100"
+  - name: PROCESS_UID  # nas_processes
+    default: 920
+  - name: PROCESS_GID
+    default: 920
+  - name: MEDIA_UID  # nas_multimedia
+    default: 910
+  - name: MEDIA_GID
+    default: 910
 
 schedule: "30 3 * * *"
 max_active_runs: 1
@@ -27,18 +35,17 @@ steps:
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
         - /mnt/fastpool/system/processes/themerr-fetch:/out
-    command: >-
-      sh -c 'set -e;
-      docker pull -q mwader/static-ffmpeg:latest;
-      id=$(docker create mwader/static-ffmpeg:latest);
-      docker cp "$id":/ffmpeg /out/ffmpeg;
-      docker cp "$id":/ffprobe /out/ffprobe;
-      docker rm "$id" >/dev/null;
-      docker pull -q denoland/deno:bin;
-      id=$(docker create denoland/deno:bin);
-      docker cp "$id":/deno /out/deno;
-      docker rm "$id" >/dev/null;
-      chmod +x /out/ffmpeg /out/ffprobe /out/deno'
+      command: >-
+        sh -c 'set -e;
+        docker pull -q mwader/static-ffmpeg:latest;
+        id=$(docker create mwader/static-ffmpeg:latest noop);
+        docker cp "$id":/ffmpeg /out/ffmpeg;
+        docker rm "$id" >/dev/null;
+        docker pull -q denoland/deno:bin;
+        id=$(docker create denoland/deno:bin noop);
+        docker cp "$id":/deno /out/deno;
+        docker rm "$id" >/dev/null;
+        chmod +x /out/ffmpeg /out/deno'
 
   - id: fetch
     depends: vendor
@@ -64,12 +71,16 @@ steps:
           - PATH_MAP=/movies=/media/movies;/tv=/media/tv
           - MEDIASERVER_TYPE=emby
           - MEDIASERVER_URL=http://emby:8096
-          - MEDIASERVER_API_KEY=${env.EMBY_API_KEY}
+          - MEDIASERVER_API_KEY=${env.MEDIASERVER_API_KEY}
           - LOUDNESS_LUFS=-16
           - DOWNLOAD_DELAY=5
           - DRY_RUN=${params.DRY_RUN}
           - MAX_DOWNLOADS=${params.MAX_DOWNLOADS}
-    command: python3 /app/themerr_fetch.py
+          - PROCESS_UID=${params.PROCESS_UID}
+          - PROCESS_GID=${params.PROCESS_GID}
+          - MEDIA_UID=${params.MEDIA_UID}
+          - MEDIA_GID=${params.MEDIA_GID}
+      command: python3 /app/themerr_fetch.py
     output: THEMERR_RESULT
     retry_policy:
       limit: 2

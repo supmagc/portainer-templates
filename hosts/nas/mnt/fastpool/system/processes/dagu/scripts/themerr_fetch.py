@@ -74,6 +74,10 @@ DOWNLOAD_DELAY = env_num("DOWNLOAD_DELAY", 5)   # seconds between YouTube downlo
 MAX_DOWNLOADS = int(env_num("MAX_DOWNLOADS", 0))  # per run, 0 = unlimited
 THEMERRDB_DELAY = env_num("THEMERRDB_DELAY", 0.3)  # seconds between live ThemerrDB lookups
 INTERVAL_HOURS = env_num("INTERVAL_HOURS", 0)   # 0 = run once and exit (use with Dagu/cron)
+PROCESS_UID = int(env_num("PROCESS_UID", 920))  # nas_processes - owns everything under DATA_DIR
+PROCESS_GID = int(env_num("PROCESS_GID", 920))
+MEDIA_UID = int(env_num("MEDIA_UID", 910))      # nas_multimedia - owns written theme files
+MEDIA_GID = int(env_num("MEDIA_GID", 910))
 
 # optional: trigger a library scan when themes were added/updated
 MEDIASERVER_TYPE = env("MEDIASERVER_TYPE").lower()   # emby | jellyfin | empty
@@ -120,6 +124,15 @@ def save_state(state: dict) -> None:
     tmp = STATE_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=1, sort_keys=True))
     tmp.replace(STATE_FILE)
+
+
+def chown_data_dir() -> None:
+    """Hand DATA_DIR's contents to PROCESS_UID:PROCESS_GID."""
+    for p in [DATA_DIR, *DATA_DIR.iterdir()]:
+        try:
+            os.chown(p, PROCESS_UID, PROCESS_GID)
+        except OSError as e:
+            log.warning("chown %s: %s", p, e)
 
 
 # --------------------------------------------------------------------------- sources
@@ -289,6 +302,7 @@ def run_once() -> dict:
     items = arr_items()
     stats = dict(added=0, updated=0, user=0, skipped=0, missing=0, failed=0, nofolder=0)
     downloads = 0
+    budget_warned = False
 
     for item in items:
         folder: Path = item["path"]
@@ -321,8 +335,10 @@ def run_once() -> dict:
             continue
 
         if MAX_DOWNLOADS and downloads >= MAX_DOWNLOADS:
-            log.info("MAX_DOWNLOADS reached, continuing next run")
-            break
+            if not budget_warned:
+                log.info("MAX_DOWNLOADS reached, skipping further theme downloads this run")
+                budget_warned = True
+            continue
 
         action = "Updating" if have_ours else "Adding"
         log.info("%s theme: %s -> %s", action, item["title"], url)
@@ -333,6 +349,7 @@ def run_once() -> dict:
             time.sleep(DOWNLOAD_DELAY)
         downloads += 1
         if fetch_theme(url, dest):
+            os.chown(dest, MEDIA_UID, MEDIA_GID)
             st = dest.stat()
             state["owned"][key] = {"url": url, "size": st.st_size,
                                    "mtime": int(st.st_mtime), "written": now().isoformat()}
@@ -342,6 +359,7 @@ def run_once() -> dict:
             stats["failed"] += 1
 
     save_state(state)
+    chown_data_dir()
     log.info("Done: %s", ", ".join(f"{k}={v}" for k, v in stats.items()))
     if (stats["added"] or stats["updated"]) and not DRY_RUN:
         refresh_library()
@@ -354,8 +372,8 @@ def main() -> int:
     if not (RADARR_URL or SONARR_URL):
         log.error("Set RADARR_URL/RADARR_API_KEY and/or SONARR_URL/SONARR_API_KEY")
         return 2
-    # ffmpeg/ffprobe/deno are vendored into DATA_DIR by the DAG's build step, not installed
-    # into the image - PATH must include it before the ffmpeg presence check below.
+    # ffmpeg is vendored into DATA_DIR by the DAG's build step, not installed into the
+    # image - PATH must include it before the ffmpeg presence check below.
     os.environ["PATH"] = f"{DATA_DIR}{os.pathsep}{os.environ.get('PATH', '')}"
     if shutil.which("ffmpeg") is None:
         log.error("ffmpeg not found in PATH")

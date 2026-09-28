@@ -3,32 +3,32 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.plugin = exports.details = void 0;
 var flowUtils_1 = require("../../../../FlowHelpers/1.0.0/interfaces/flowUtils");
 
-// Rules:
-//   - aac / ac3 / eac3              -> copy (already efficient/compatible)
-//   - "high quality" multichannel   -> transcode to eac3 640k
-//     (dts, dts-hd, truehd, mlp, pcm_*, flac, with channels > 2)
-//   - "high quality" but stereo     -> transcode to aac 192k
-//     (no surround to preserve, ac3/eac3 buys nothing over aac here)
-//   - anything else (mp3, wma, ...) -> transcode to aac 192k
-//     (source was already lossy/low quality, no point spending bits on eac3)
-//
-// EAC3 chosen over AC3 for the high-quality multichannel case: AC3 caps at
-// 640kbps/5.1, EAC3 does better quality-per-bit and is supported by
-// everything that plays AC3 (Jellyfin/Plex/Emby, most AVRs since ~2010+).
-//
-// Known limitation: only the first audio stream is inspected. Multi-audio-
-// track files (e.g. commentary tracks) aren't handled per-track.
+// First audio stream only - multi-track files aren't handled per track. Codec lists and
+// bitrates live in basicJelle/sharedEncodingConstants:
+//   AUDIO_COPY_CODECS                          -> copy
+//   AUDIO_HIGH_QUALITY_CODECS / pcm_*, >2 ch   -> eac3 (AC3 caps at 640k/5.1; EAC3 is better
+//                                                 per bit and plays wherever AC3 does)
+//   everything else                            -> aac at the source bitrate, clamped
+// Matching the source bitrate stops lossy audio from growing: a 128k WMA used to become
+// 192k AAC (+49%).
 
-var PASSTHROUGH_CODECS = ['aac', 'ac3', 'eac3'];
-var HIGH_QUALITY_CODECS = ['dts', 'truehd', 'mlp', 'flac'];
+var C = require('../../../basicJelle/sharedEncodingConstants');
 
 function isHighQuality(codec) {
-    return HIGH_QUALITY_CODECS.indexOf(codec) !== -1 || codec.indexOf('pcm_') === 0;
+    return C.AUDIO_HIGH_QUALITY_CODECS.indexOf(codec) !== -1 || codec.indexOf('pcm_') === 0;
+}
+
+// MKV often only carries the bitrate in a BPS tag, not in bit_rate.
+function sourceKbps(aStream) {
+    var tags = aStream.tags || {};
+    var bps = Number(aStream.bit_rate || tags.BPS || tags['BPS-eng'] || 0);
+    return Math.round(bps / 1000);
 }
 
 var details = function () { return ({
     name: 'Set Audio Handling (Custom)',
-    description: 'Copies aac/ac3/eac3. Transcodes high-quality multichannel sources to eac3 640k, everything else (incl. high-quality stereo) to aac 192k.',
+    description: 'Copies ' + C.AUDIO_COPY_CODECS.join('/') + '. Transcodes lossless/high-bitrate multichannel to eac3 '
+        + C.AUDIO_MULTICHANNEL_KBPS + 'k, everything else to aac at the source bitrate (max ' + C.AUDIO_AAC_MAX_KBPS + 'k).',
     style: {
         borderColor: '#6efefc',
     },
@@ -54,15 +54,29 @@ var plugin = function (args) {
     (0, flowUtils_1.checkFfmpegCommandInit)(args);
 
     var aStream = args.inputFileObj.ffProbeData.streams.find(function (s) { return s.codec_type === 'audio'; });
-    var codec = aStream ? aStream.codec_name : '';
-    var channels = aStream ? (Number(aStream.channels) || 0) : 0;
+    var output = args.variables.ffmpegCommand.overallOuputArguments;
 
-    if (PASSTHROUGH_CODECS.indexOf(codec) !== -1) {
-        args.variables.ffmpegCommand.overallOuputArguments.push('-c:a', 'copy');
-    } else if (isHighQuality(codec) && channels > 2) {
-        args.variables.ffmpegCommand.overallOuputArguments.push('-c:a', 'eac3', '-b:a', '640k');
+    if (!aStream) {
+        args.jobLog('Audio: no audio stream');
     } else {
-        args.variables.ffmpegCommand.overallOuputArguments.push('-c:a', 'aac', '-b:a', '192k');
+        var codec = String(aStream.codec_name || '');
+        var channels = Number(aStream.channels) || 0;
+        var srcKbps = sourceKbps(aStream);
+        var decision;
+        if (C.AUDIO_COPY_CODECS.indexOf(codec) !== -1) {
+            output.push('-c:a', 'copy');
+            decision = 'copy';
+        } else if (isHighQuality(codec) && channels > 2) {
+            output.push('-c:a', 'eac3', '-b:a', C.AUDIO_MULTICHANNEL_KBPS + 'k');
+            decision = 'eac3 ' + C.AUDIO_MULTICHANNEL_KBPS + 'k';
+        } else {
+            var aacKbps = srcKbps > 0
+                ? Math.max(C.AUDIO_AAC_MIN_KBPS, Math.min(C.AUDIO_AAC_MAX_KBPS, srcKbps))
+                : C.AUDIO_AAC_MAX_KBPS;
+            output.push('-c:a', 'aac', '-b:a', aacKbps + 'k');
+            decision = 'aac ' + aacKbps + 'k';
+        }
+        args.jobLog('Audio: ' + codec + ' ' + channels + 'ch ' + (srcKbps || '?') + 'k -> ' + decision);
     }
 
     return {
