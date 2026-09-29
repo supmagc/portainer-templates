@@ -709,3 +709,48 @@ groups:
         annotations:
           summary: "Cert for {{ $labels.instance }} expires in {{ $values.B.Value }} days"
           description: "TLS cert served by {{ $labels.instance }} has less than 7 days left - check the acme.sh renewal cron on the relevant host."
+
+      - uid: router-packet-cost-high
+        title: RouterPacketCostHigh
+        condition: C
+        for: 3h
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 21600, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: 1e6 * sum(rate(node_cpu_seconds_total{job="openwrt", mode="softirq"}[6h])) / sum(rate(node_network_receive_packets_total{job="openwrt", device="eth0"}[6h]))
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                # VERIFY: ~3x the fresh-boot baseline (26-43 before flow offloading); retune once the post-offload baseline is known.
+                - evaluator: {type: gt, params: [90]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Router packet cost {{ $values.B.Value }} µs/packet"
+          description: "OpenWrt softirq cost per packet has been above 90 µs for 3h - throughput is degrading with uptime; a router reboot restores it (see docs/network.md)."

@@ -53,6 +53,8 @@ $TokensFile = Join-Path $ScriptDir '..\.tokens'
 
 # --- secret templating: {{TOKEN_NAME}} in a hosts\ file is filled in from .tokens
 # (git-ignored, KEY=value per line) before scp'ing. See .token.example for the format.
+# Names must be UPPER_SNAKE (case-sensitive) so Grafana/Go-template {{label}} passes through.
+$TokenPattern = '\{\{([A-Z][A-Z0-9_]*)\}\}'
 $tokens = @{}
 if (Test-Path $TokensFile) {
     foreach ($line in Get-Content $TokensFile) {
@@ -66,16 +68,16 @@ if (Test-Path $TokensFile) {
 function Resolve-DeployFile([string]$LocalFile) {
     $content = $null
     try { $content = Get-Content -Path $LocalFile -Raw -ErrorAction Stop } catch { }
-    if ($null -eq $content -or $content -notmatch '\{\{') {
+    if ($null -eq $content -or $content -cnotmatch $TokenPattern) {
         return $LocalFile
     }
-    $substituted = [regex]::Replace($content, '\{\{([A-Za-z0-9_]+)\}\}', {
+    $substituted = [regex]::Replace($content, $TokenPattern, {
         param($m)
         $name = $m.Groups[1].Value
         if ($tokens.ContainsKey($name)) { $tokens[$name] } else { $m.Value }
     })
-    if ($substituted -match '\{\{[A-Za-z0-9_]+\}\}') {
-        $missing = ([regex]::Matches($substituted, '\{\{[A-Za-z0-9_]+\}\}') | ForEach-Object { $_.Value } | Select-Object -Unique) -join ', '
+    if ($substituted -cmatch $TokenPattern) {
+        $missing = ([regex]::Matches($substituted, $TokenPattern) | ForEach-Object { $_.Value } | Select-Object -Unique) -join ', '
         Write-Error "Unresolved template token(s) in $LocalFile - add them to .tokens before deploying: $missing"
     }
     $tempFile = [System.IO.Path]::GetTempFileName()

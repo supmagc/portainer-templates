@@ -39,6 +39,8 @@ say so explicitly when telling the user a change needs one.
   copy `.token.example` to start one) before scp'ing, and **aborts the deploy** if a
   `{{...}}` survives substitution rather than ship a literal placeholder to a host — so a
   file can be redeployed freely without ever stomping the real value already on the host.
+  Token names must be UPPER_SNAKE (matched case-sensitively); lowercase/camelCase
+  `{{label}}` (Grafana legends, Go templates) is left alone.
 - **Never persist a secret the user pastes into chat**, into a file, memory, or anywhere
   else — flag it immediately instead (e.g. "that TrueNAS output includes a live B2 key —
   I won't write it anywhere"). This has come up for real: a pasted `midclt cloudsync.query`

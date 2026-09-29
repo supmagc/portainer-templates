@@ -73,7 +73,9 @@ the job.
 ## SQM (cake) — WAN and guest/work shaping
 
 `/etc/config/sqm` on the router (not tracked in this repo — router-local config) runs
-three `cake` queues:
+three queues — `cake`/`layer_cake.qos` until 2026-09-29, temporarily `fq_codel`/`simple.qos`
+since then as an experiment (see
+[Per-packet softirq cost grows with uptime](#per-packet-softirq-cost-grows-with-uptime-2026-09-29-root-cause-open)):
 
 - **`eth1`/`wan`**: the actual internet-facing queue. The physical path is
   **VDSL2 → Fritzbox (modem mode, does the DSL/ATM work) → OpenWrt `eth1` over plain
@@ -172,6 +174,42 @@ If the slowdown recurs after both land, next step is watching `nf_conntrack_coun
 under load (`watch -n1 'cat /proc/sys/net/netfilter/nf_conntrack_count'`) to see whether
 it's climbing again — that'd point at a lower scaling factor still, or routing bitmagnet's
 DHT egress through a VPN container instead of the home WAN directly.
+
+## Per-packet softirq cost grows with uptime (2026-09-29, root cause open)
+
+**Symptom:** throughput through the router collapses over days of uptime and a reboot
+restores it. The admin desktop (VLAN 99) → NAS (VLAN 10) SMB copy is routed by the
+router: ~125 Mbit/s at 14 days uptime vs. 734 Mbit/s minutes after a reboot. WAN traffic
+suffers too (one core ~89% softirq at ~48 Mbit/s download at day 14).
+
+**Mechanism:** softirq CPU time *per packet* climbs steadily with uptime —
+~26–43 µs (day 1) → ~75–110 (day 3–5) → ~100–140 (day 14) → ~440 before the
+2026-09-15 reboot (~107 days up). With one `eth0` IRQ on CPU0 and packet steering
+hashing each flow to a single core, one big flow saturates one core. Tracked on the
+Network Details dashboard ("Router softirq cost per packet") and by the
+`RouterPacketCostHigh` alert (6h average > 90 µs for 3h).
+
+**Ruled out** (before/after-reboot counter snapshots, `/root/snap.sh` on the router):
+conntrack (size and `search_restart`), memory/slab leak, neighbour/route/FDB/nft-set
+growth, interface errors, ruleset size, `br_netfilter` (not loaded), CPU frequency (no
+cpufreq driver). The kernel has no `perf` and no `/proc/slabinfo`, so profiling isn't
+possible on the stock image. openwrt#21873 (CAKE decay) does not match — 24.10 x86 VM,
+CPU not saturated.
+
+**Changes made:** software flow offloading enabled (`firewall.@defaults[0].flow_offloading=1`,
+confirmed working — flows show `[OFFLOAD]`); it lowers the per-packet baseline, so compare
+new curves against a post-offload reboot, not the older numbers. Packet steering was
+already on (`rps_cpus=3`).
+
+**Elimination experiments** (one at a time, ~4–5 days each — the curve rises measurably
+by day 3):
+
+1. SQM `cake`/`layer_cake.qos` → `fq_codel`/`simple.qos` on all three queues — started
+   2026-09-29 (judge ~2026-10-03 against the fresh-boot curve above; revert both uci
+   options if it makes no difference).
+2. adblock report off (`adblock.global.adb_report=0` — its `tcpdump` taps every `br-lan`
+   packet).
+3. If neither flattens the curve: upgrade to 24.10 (kernel 6.6, newer mvneta/mv88e6xxx).
 
 ## openHABian reverse proxy (Caddy) + its cert
 

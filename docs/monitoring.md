@@ -542,7 +542,13 @@ frames, so the step installs it inline (`apt-get install ffmpeg` into the `pytho
 image, same inline-install pattern `backdrop-generate` uses for `python3`) rather than
 switching the whole DAG to an ffmpeg-based image over a check that's a small fraction of its
 job; missing `ffmpeg` degrades to skipping just that one check with a warning; no CUDA/GPU
-needed since it's a 32x32 frame probe on already-small clips, not an encode. Runs weekly
+needed since it's a 32x32 frame probe on already-small clips, not an encode. The check
+decodes only keyframes in one pass per file (`-skip_frame nokey -fps_mode passthrough`),
+~0.1s/file. The older probe + 4 `-ss` seeks cost 1-3s/file, because each seek decodes up
+to a full GOP, so the whole library took ~35 min. The seek method now runs only when a
+clip has fewer than 2 keyframes, and to confirm any "static" verdict, so the fast path can
+clear a file but never flag one on its own. Fanart dedup hashes only files whose byte size
+collides with another candidate. Runs weekly
 (Sundays 06:00), after the nightly theme-song/backdrop jobs, since it's a full-library scan
 rather than an incremental one.
 

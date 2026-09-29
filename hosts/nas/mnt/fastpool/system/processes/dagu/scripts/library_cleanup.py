@@ -42,6 +42,7 @@ import re
 import shutil
 import subprocess
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -99,6 +100,16 @@ def sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
+def content_keys(files: list[Path]) -> dict[Path, str]:
+    """Exact-duplicate key per file. Only files sharing a byte size with another
+    candidate are hashed - a unique size can't have an exact duplicate, so it's keyed by
+    size alone and never read. Keeps the weekly run from re-reading every extrafanart
+    image in the library just to find the handful that actually collide."""
+    sizes = {f: f.stat().st_size for f in files}
+    counts = Counter(sizes.values())
+    return {f: sha256_file(f) if counts[s] > 1 else f"size:{s}" for f, s in sizes.items()}
+
+
 # --------------------------------------------------------------------------- cruft scan
 
 def is_cruft_file(f: Path) -> bool:
@@ -114,10 +125,16 @@ def scan_cruft(root: Path, findings: dict, deleted: list[str]) -> None:
     _imgdb.nfo doesn't stop an emptied extrathumbs/ folder from being removed."""
     if not root.is_dir():
         return
-    for f in root.rglob("*"):
-        if not f.is_file():
-            continue
-        if is_cruft_file(f):
+    # os.walk rather than rglob+is_file: scandir's d_type already says file vs dir, so
+    # this skips a stat() per entry across the whole library
+    t0 = time.monotonic()
+    scanned = 0
+    for dirpath, _dirnames, filenames in os.walk(root):
+        scanned += len(filenames)
+        for name in filenames:
+            f = Path(dirpath, name)
+            if not is_cruft_file(f):
+                continue
             findings["cruft_files"].append(str(f))
             if APPLY:
                 try:
@@ -125,6 +142,7 @@ def scan_cruft(root: Path, findings: dict, deleted: list[str]) -> None:
                     deleted.append(str(f))
                 except OSError as e:
                     log.warning("delete %s: %s", f, e)
+    log.info("cruft scan: %d files in %.0fs (%s)", scanned, time.monotonic() - t0, root)
 
 
 FRAME_SIZE = 32 * 32 * 3  # rgb24 @ 32x32
@@ -143,18 +161,12 @@ def probe_duration(path: Path) -> float:
 
 
 def frame_pixels(path: Path, t: float) -> bytes | None:
-    """`-ss` *before* `-i` is a fast keyframe-ish seek, not a full decode-from-start -
-    two things were tried and rejected before this: n evenly-spaced samples via a
-    single `fps`-filter linear decode (correct, but a full native-resolution decode of
-    a real, non-static clip is too expensive with no GPU in this container - confirmed
-    live, still hadn't finished 100/1200 files after several minutes), and
-    `-skip_frame nokey` in one pass (fast, but confirmed to silently emit all-zero
-    garbage frames instead of real keyframe content with this filter chain - a
-    real ffmpeg gotcha, not a size/motion problem). This per-timestamp seek is the
-    original, numerically-validated-correct method (confirmed live against a known
-    static backdrop's actual mean pixel-diff); scan_backdrops now runs it across files
-    in parallel instead, since spawning ffmpeg per timestamp was never the slow part -
-    doing all ~1200 files one at a time serially was."""
+    """`-ss` *before* `-i` seeks to the keyframe before t, then decodes forward to t -
+    the original, numerically-validated-correct method (confirmed live against a known
+    static backdrop's actual mean pixel-diff). Cost scales with GOP length, not clip
+    length: on a long-GOP clip every sample decodes up to a whole GOP at native
+    resolution, which is why this is now only the fallback/confirmation path behind
+    keyframe_pixels rather than the per-file default."""
     cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
            "-ss", str(max(t, 0)), "-i", str(path), "-frames:v", "1",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "32x32", "-"]
@@ -165,26 +177,68 @@ def frame_pixels(path: Path, t: float) -> bytes | None:
     return r.stdout if r.returncode == 0 and r.stdout else None
 
 
+def keyframe_pixels(path: Path) -> list[bytes] | None:
+    """Every keyframe in one ffmpeg pass, decoding nothing else - ~0.1s/file vs. ~1-3s
+    for a probe + 4 seeks. An earlier `-skip_frame nokey` attempt that went through an
+    `fps` filter flagged 185/187 test clips static; never root-caused, but an `fps`
+    filter fills its fixed-rate slots by repeating the last (sparse) keyframe, which
+    alone would do that. `-fps_mode passthrough` emits exactly one frame per decoded
+    keyframe, and is_static_video re-checks any static verdict with the seek method
+    regardless."""
+    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+           "-skip_frame", "nokey", "-i", str(path), "-map", "0:v:0",
+           "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "32x32", "-"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired:
+        return None
+    if r.returncode != 0 or not r.stdout or len(r.stdout) % FRAME_SIZE:
+        return None
+    return [r.stdout[i:i + FRAME_SIZE] for i in range(0, len(r.stdout), FRAME_SIZE)]
+
+
 def pixel_diff(a: bytes, b: bytes) -> float:
     if not a or len(a) != len(b):
         return 0.0
     return sum(abs(x - y) for x, y in zip(a, b)) / len(a)
 
 
-def is_static_video(path: Path) -> bool:
-    """Sample a few evenly-spaced frames and check consecutive pixel-diff - True only
-    if every sample pair is near-identical, i.e. the clip never actually moves. Returns
-    False (not flagged) if the file can't be probed/decoded at all, since that's a
-    different, separately-obvious problem (corrupt file) rather than a static one."""
+def all_near_identical(frames: list[bytes]) -> bool:
+    return all(pixel_diff(frames[i], frames[i + 1]) < STATIC_BACKDROP_THRESHOLD
+               for i in range(len(frames) - 1))
+
+
+def is_static_by_seek(path: Path) -> bool:
     duration = probe_duration(path)
     if duration <= 0:
         return False
     times = [duration * (i + 1) / (STATIC_BACKDROP_SAMPLES + 1) for i in range(STATIC_BACKDROP_SAMPLES)]
     frames = [f for f in (frame_pixels(path, t) for t in times) if f is not None]
-    if len(frames) < 2:
-        return False
-    diffs = [pixel_diff(frames[i], frames[i + 1]) for i in range(len(frames) - 1)]
-    return all(d < STATIC_BACKDROP_THRESHOLD for d in diffs)
+    return len(frames) >= 2 and all_near_identical(frames)
+
+
+def is_static_video(path: Path) -> bool:
+    """Sample a few evenly-spaced frames and check consecutive pixel-diff - True only
+    if every sample pair is near-identical, i.e. the clip never actually moves. Returns
+    False (not flagged) if the file can't be probed/decoded at all, since that's a
+    different, separately-obvious problem (corrupt file) rather than a static one.
+
+    The keyframe pass settles the common case (the clip moves) on its own. It never
+    gets the last word on "static": a clip with fewer than 2 keyframes can't be judged
+    from keyframes at all, and a static verdict is re-checked by the seek method, so
+    the fast path can only ever clear a file, never flag one the validated method
+    wouldn't."""
+    keyframes = keyframe_pixels(path)
+    if keyframes and len(keyframes) >= 2:
+        n = len(keyframes)
+        # same evenly-spaced, endpoints-excluded spread as the seek method's timestamps
+        idx = sorted({min(n - 1, round(n * (i + 1) / (STATIC_BACKDROP_SAMPLES + 1)))
+                      for i in range(STATIC_BACKDROP_SAMPLES)})
+        if len(idx) < 2:
+            idx = [0, n - 1]
+        if not all_near_identical([keyframes[i] for i in idx]):
+            return False
+    return is_static_by_seek(path)
 
 
 def scan_backdrops(root: Path, findings: dict, deleted: list[str]) -> None:
@@ -289,24 +343,27 @@ def consolidate_fanart(item_dir: Path, findings: dict, moved: list[str], deleted
     names: set[str] = set()
     rename_map: dict[str, str] = {}
 
-    if extrafanart_dir.is_dir():
-        for f in sorted(extrafanart_dir.iterdir()):
-            if not f.is_file() or f.suffix.lower() not in IMAGE_EXTS:
-                continue
-            names.add(f.name)
-            h = sha256_file(f)
-            if h in hash_to_name:
-                findings["duplicate_fanart"].append(str(f))
-                rename_map[f.name] = hash_to_name[h]
-                if APPLY:
-                    f.unlink()
-                    deleted.append(str(f))
-            else:
-                hash_to_name[h] = f.name
+    extrafanart_files = sorted(
+        f for f in extrafanart_dir.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS
+    ) if extrafanart_dir.is_dir() else []
+    loose_files = sorted(p for p in item_dir.iterdir() if p.is_file() and LOOSE_FANART_RE.match(p.name))
+    keys = content_keys(extrafanart_files + loose_files)
 
-    for f in sorted(p for p in item_dir.iterdir() if p.is_file() and LOOSE_FANART_RE.match(p.name)):
+    for f in extrafanart_files:
+        names.add(f.name)
+        h = keys[f]
+        if h in hash_to_name:
+            findings["duplicate_fanart"].append(str(f))
+            rename_map[f.name] = hash_to_name[h]
+            if APPLY:
+                f.unlink()
+                deleted.append(str(f))
+        else:
+            hash_to_name[h] = f.name
+
+    for f in loose_files:
         findings["loose_fanart"].append(str(f))
-        h = sha256_file(f)
+        h = keys[f]
         if h in hash_to_name:
             findings["duplicate_fanart"].append(str(f))
             rename_map[f.name] = hash_to_name[h]
@@ -338,18 +395,21 @@ def consolidate_music_extrathumbs(artist_dir: Path, findings: dict, moved: list[
     extrafanart_dir = artist_dir / "extrafanart"
     hash_to_name: dict[str, str] = {}
     names: set[str] = set()
-    if extrafanart_dir.is_dir():
-        for f in extrafanart_dir.iterdir():
-            if f.is_file() and f.suffix.lower() in IMAGE_EXTS:
-                names.add(f.name)
-                hash_to_name.setdefault(sha256_file(f), f.name)
+    extrafanart_files = [
+        f for f in extrafanart_dir.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS
+    ] if extrafanart_dir.is_dir() else []
+    extrathumbs_files = sorted(
+        f for f in extrathumbs_dir.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS
+    )
+    keys = content_keys(extrafanart_files + extrathumbs_files)
+    for f in extrafanart_files:
+        names.add(f.name)
+        hash_to_name.setdefault(keys[f], f.name)
 
     findings["extrathumbs_overlap"].append(str(artist_dir))
     rename_map: dict[str, str] = {}
-    for f in sorted(extrathumbs_dir.iterdir()):
-        if not f.is_file() or f.suffix.lower() not in IMAGE_EXTS:
-            continue
-        h = sha256_file(f)
+    for f in extrathumbs_files:
+        h = keys[f]
         if h in hash_to_name:
             findings["duplicate_fanart"].append(str(f))
             rename_map[f.name] = hash_to_name[h]
@@ -402,7 +462,7 @@ def merge_dir_tree(src: Path, dst: Path, findings: dict, moved: list[str], delet
             item.rename(dest)
             moved.append(f"{item} -> {dest}")
             dst_entries[key] = dest
-        elif sha256_file(item) == sha256_file(target):
+        elif item.stat().st_size == target.stat().st_size and sha256_file(item) == sha256_file(target):
             findings["case_merge_exact_duplicates"].append(str(item))
             item.unlink()
             deleted.append(str(item))
