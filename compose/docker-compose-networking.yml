@@ -17,6 +17,8 @@ networks:
     external: true
   nextcloud_default:
     external: true
+  household_default:
+    external: true
 
 services:
   traefik:
@@ -30,6 +32,7 @@ services:
       - extras_default
       - monitoring_default
       - nextcloud_default
+      - household_default
     pull_policy: missing
     restart: unless-stopped
     command:

@@ -25,7 +25,7 @@ Movies/
     extrafanart/fanart1.jpg  extrafanart/fanart2.jpg  ...
     backdrops/theme.mp4        # owned by backdrop-generate
     theme.mp3                  # owned by themerr-fetch
-    trailers/Sicario-trailer.mp4
+    trailers/Sicario (2015) - Official Trailer [<youtube-id>].mp4
 ```
 
 - **One video file per folder.** Radarr names it `<Title> (<Year>) - <Source>-<Quality> -
@@ -45,7 +45,9 @@ Movies/
   what we didn't write" rule). Not a Kodi/Emby convention on its own — it's this repo's own
   automation's output directory name.
 - **`trailers/`** — local trailer file(s), any name; Jellyfin/Emby both read the whole
-  folder.
+  folder. `trailer-fetch` writes up to 5 as `<Title (Year)> - <TMDB name> [<YouTube id>].mp4`
+  and deletes any other trailer here once one of its own is in place (`.notrailer` opts a
+  folder out).
 
 ### Movies — cleanup categories
 
@@ -57,8 +59,10 @@ Movies/
 | Broken legacy backdrop | `backdrops/theme.html` (an HTML error/landing page saved by a pre-automation downloader, not a video) | delete |
 | Oversized backdrop | `backdrops/theme.*` over ~150MB (a real theme clip is single-digit-to-tens of MB; this size suggests a full file landed there by mistake) | report only |
 | Static-image backdrop | `backdrops/theme.mp4`/`.mkv` that's frozen throughout (confirmed live: `Matrix Resurrections, The (2021)` — a 60s, 3.8MB clip that's really a still image encoded as video, mean frame-to-frame pixel-diff ≈0.08 against a 2.0 threshold) | report only |
+| Loose trailer | `*-trailer.*` video next to the main video (also at a series root) | move into `trailers/` together with its same-named `.nfo` (exact duplicate of one already there: delete); `trailer-fetch` takes it from there |
+| Orphaned nfo | `<name>.nfo` with no `<name>.<video>` beside it, in any subfolder — an upgraded/renamed video's old nfo, or a `trailers/` nfo after `trailer-fetch` replaced that trailer. `movie.nfo`/`tvshow.nfo`/`season.nfo` never count; a folder with no video at all is left alone (see "No video file"), except `trailers/` | delete |
 | No video file | folder has no `.mkv`/`.mp4`/`.avi` | report only — usually an in-progress Radarr import |
-| Multiple video files | more than one `.mkv`/`.mp4`/`.avi` without an edition tag | report only — could be a legitimate multi-cut |
+| Multiple video files | more than one `.mkv`/`.mp4`/`.avi` without an edition tag (loose trailers don't count) | report only — could be a legitimate multi-cut |
 
 ## Series — `series/<Show Title>/Season NN/`
 
@@ -163,8 +167,8 @@ re-derive and reported either way. The loser folder is removed once emptied.
 `library-cleanup` (weekly, `APPLY=false` by default — unlike the additive `themerr-fetch`/
 `backdrop-generate` DAGs, this one defaults to **report-only** because its job is deletion)
 auto-deletes the "delete" rows above (OS cruft, re-scrape backup files, stale partial
-downloads, broken legacy `backdrops/theme.html` stubs), consolidates loose/duplicate
-fanart images, and merges case-duplicate folders — all under the same `APPLY` switch, and
+downloads, broken legacy `backdrops/theme.html` stubs, orphaned nfos), moves loose trailers into
+`trailers/`, consolidates loose/duplicate fanart images, and merges case-duplicate folders — all under the same `APPLY` switch, and
 all hash-verified or NFO-reference-safe as described above. Every "report only" row is
 listed in its output for manual review and never touched automatically — folders with zero
 or multiple video files, missing episode nfos, and oversized backdrops all need a human

@@ -1,0 +1,106 @@
+version: "3.3"
+
+name: household
+
+networks:
+  default:
+    driver: bridge
+  utilities_default:
+    external: true
+
+services:
+  mealie:
+    image: ghcr.io/mealie-recipes/mealie:latest
+    container_name: mealie
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.mealie-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.mealie.rule=Host(`mealie.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.mealie.entrypoints=web"
+      - "traefik.http.routers.mealie.middlewares=mealie-https-redirect"
+      - "traefik.http.routers.mealie-secure.rule=Host(`mealie.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.mealie-secure.entrypoints=web-secure"
+      - "traefik.http.routers.mealie-secure.tls=true"
+      - "traefik.http.routers.mealie-secure.tls.certresolver=stepca"
+      - "traefik.http.services.mealie.loadbalancer.server.port=9000"
+    ports:
+      - ${NETWORK_INTERFACE}:9925:9000/tcp
+    secrets:
+      - mealie-postgres-password
+    volumes:
+      - /mnt/fastpool/system/nextcloud/mealie:/app/data
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - PUID=${APP_USER}
+      - PGID=${APP_GROUP}
+      - BASE_URL=https://mealie.${NETWORK_DOMAIN}
+      - ALLOW_SIGNUP=false
+      - DB_ENGINE=postgres
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=mealie
+      - POSTGRES_USER=mealie
+      - POSTGRES_PASSWORD_FILE=/run/secrets/mealie-postgres-password
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+
+  vikunja:
+    image: vikunja/vikunja:latest
+    container_name: vikunja
+    user: ${APP_USER}:${APP_GROUP}
+    networks:
+      - default
+      - utilities_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.vikunja-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.vikunja.rule=Host(`vikunja.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.vikunja.entrypoints=web"
+      - "traefik.http.routers.vikunja.middlewares=vikunja-https-redirect"
+      - "traefik.http.routers.vikunja-secure.rule=Host(`vikunja.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.vikunja-secure.entrypoints=web-secure"
+      - "traefik.http.routers.vikunja-secure.tls=true"
+      - "traefik.http.routers.vikunja-secure.tls.certresolver=stepca"
+      - "traefik.http.services.vikunja.loadbalancer.server.port=3456"
+    ports:
+      - ${NETWORK_INTERFACE}:3456:3456/tcp
+    secrets:
+      - vikunja-postgres-password
+      - vikunja-secret
+    volumes:
+      - /mnt/fastpool/system/nextcloud/vikunja/files:/app/vikunja/files
+    environment:
+      - VIKUNJA_SERVICE_TIMEZONE=${APP_TIMEZONE}
+      - VIKUNJA_SERVICE_PUBLICURL=https://vikunja.${NETWORK_DOMAIN}/
+      - VIKUNJA_SERVICE_ENABLEREGISTRATION=false   # set true for first-user signup, then back to false
+      - VIKUNJA_SERVICE_SECRET_FILE=/run/secrets/vikunja-secret
+      - VIKUNJA_DATABASE_TYPE=postgres
+      - VIKUNJA_DATABASE_HOST=postgres
+      - VIKUNJA_DATABASE_DATABASE=vikunja
+      - VIKUNJA_DATABASE_USER=vikunja
+      - VIKUNJA_DATABASE_PASSWORD_FILE=/run/secrets/vikunja-postgres-password
+    healthcheck:
+      test: ["CMD", "/app/vikunja/vikunja", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+secrets:
+  mealie-postgres-password:
+    file: /mnt/fastpool/system/processes/secrets/mealie-postgres-password.txt
+  vikunja-postgres-password:
+    file: /mnt/fastpool/system/processes/secrets/vikunja-postgres-password.txt
+  vikunja-secret:
+    file: /mnt/fastpool/system/processes/secrets/vikunja-secret.txt

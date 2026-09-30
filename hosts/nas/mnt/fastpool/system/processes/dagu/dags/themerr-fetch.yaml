@@ -58,7 +58,7 @@ steps:
         EndpointsConfig:
           multimedia_default: {}
       volumes:
-        - /mnt/fastpool/system/processes/dagu/scripts/themerr_fetch.py:/app/themerr_fetch.py:ro
+        - /mnt/fastpool/system/processes/dagu/scripts/themerr-fetch.py:/app/themerr-fetch.py:ro
         - /mnt/fastpool/system/processes/dagu/job-data/themerr-fetch:/data
         - /mnt/rightpool/multimedia/movies:/media/movies
         - /mnt/rightpool/multimedia/series:/media/tv
@@ -80,7 +80,7 @@ steps:
           - PROCESS_GID=${params.PROCESS_GID}
           - MEDIA_UID=${params.MEDIA_UID}
           - MEDIA_GID=${params.MEDIA_GID}
-      command: python3 /app/themerr_fetch.py
+      command: python3 /app/themerr-fetch.py
     output: THEMERR_RESULT
     retry_policy:
       limit: 2

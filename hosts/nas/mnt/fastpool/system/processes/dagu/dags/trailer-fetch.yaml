@@ -1,22 +1,23 @@
 secrets:
   - name: RADARR_API_KEY
-    ref: backdrop-generate/radarr-api-key
+    ref: trailer-fetch/radarr-api-key
   - name: SONARR_API_KEY
-    ref: backdrop-generate/sonarr-api-key
+    ref: trailer-fetch/sonarr-api-key
+  - name: TMDB_API_KEY
+    ref: trailer-fetch/tmdb-api-key
   - name: MEDIASERVER_API_KEY
-    ref: backdrop-generate/mediaserver-api-key
+    ref: trailer-fetch/mediaserver-api-key
 
 params:
   - name: DRY_RUN
     default: "false"
-  # override with MAX_ITEMS_PER_RUN=0 for a one-off manual catch-up run
-  - name: MAX_ITEMS_PER_RUN
-    default: "20"
   # override with MAX_DOWNLOADS=0 for a one-off manual catch-up run
   - name: MAX_DOWNLOADS
     default: "50"
-  # false = local montages only, no ThemerrDB videos
-  - name: THEMERR_VIDEOS
+  # original-language trailers kept per item, 0 = unlimited
+  - name: MAX_TRAILERS
+    default: "5"
+  - name: ORIGINAL_LANGUAGE_ONLY
     default: "true"
   - name: PROCESS_UID  # nas_processes
     default: 920
@@ -26,18 +27,11 @@ params:
     default: 910
   - name: MEDIA_GID
     default: 910
-  - name: N_SAMPLES
-    default: "10"
-  - name: SAMPLE_DURATION
-    default: "3"
-  - name: SERIES_EPISODES
-    default: "3"
 
-# deliberately after themerr-fetch (03:30) - see docs/monitoring.md for why
-schedule: "0 5 * * *"
+schedule: "0 2 * * *"
 max_active_runs: 1
 
-# See docs/monitoring.md's backdrop-generate section for the design.
+# See docs/monitoring.md's trailer-fetch section for the design.
 steps:
   - id: vendor
     action: docker.run
@@ -47,7 +41,7 @@ steps:
       auto_remove: true
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
-        - /mnt/fastpool/system/processes/dagu/job-data/backdrop-generate:/out
+        - /mnt/fastpool/system/processes/dagu/job-data/trailer-fetch:/out
       command: >-
         sh -c 'set -e;
         docker pull -q denoland/deno:bin;
@@ -56,7 +50,7 @@ steps:
         docker rm "$id" >/dev/null;
         chmod +x /out/deno'
 
-  - id: generate
+  - id: fetch
     depends: vendor
     action: docker.run
     with:
@@ -69,10 +63,11 @@ steps:
       host:
         Runtime: nvidia
       volumes:
-        - /mnt/fastpool/system/processes/dagu/scripts/backdrop-generate.py:/app/backdrop-generate.py:ro
-        - /mnt/fastpool/system/processes/dagu/job-data/backdrop-generate:/data
-        - /mnt/rightpool/multimedia/movies:/media/movies
-        - /mnt/rightpool/multimedia/series:/media/tv
+        - /mnt/fastpool/system/processes/dagu/scripts/trailer-fetch.py:/app/trailer-fetch.py:ro
+        - /mnt/fastpool/system/processes/dagu/job-data/trailer-fetch:/data
+        # same container paths as Emby/Jellyfin, so media-server notifications need no mapping
+        - /mnt/rightpool/multimedia/movies:/mnt/movies
+        - /mnt/rightpool/multimedia/series:/mnt/series
       container:
         entrypoint: []  # image's own ENTRYPOINT is ["ffmpeg"] - must clear it to run our command
         env:
@@ -82,18 +77,16 @@ steps:
           - RADARR_API_KEY=${env.RADARR_API_KEY}
           - SONARR_URL=http://sonarr:8989
           - SONARR_API_KEY=${env.SONARR_API_KEY}
-          - PATH_MAP=/movies=/media/movies;/tv=/media/tv
+          - TMDB_API_KEY=${env.TMDB_API_KEY}
+          - PATH_MAP=/movies=/mnt/movies;/tv=/mnt/series
           - MEDIASERVER_TYPE=emby
           - MEDIASERVER_URL=http://emby:8096
           - MEDIASERVER_API_KEY=${env.MEDIASERVER_API_KEY}
           - DATA_DIR=/data
-          - N_SAMPLES=${params.N_SAMPLES}
-          - SAMPLE_DURATION=${params.SAMPLE_DURATION}
-          - SERIES_EPISODES=${params.SERIES_EPISODES}
-          - MAX_ITEMS_PER_RUN=${params.MAX_ITEMS_PER_RUN}
-          - MAX_DOWNLOADS=${params.MAX_DOWNLOADS}
-          - THEMERR_VIDEOS=${params.THEMERR_VIDEOS}
           - DOWNLOAD_DELAY=5
+          - MAX_DOWNLOADS=${params.MAX_DOWNLOADS}
+          - MAX_TRAILERS=${params.MAX_TRAILERS}
+          - ORIGINAL_LANGUAGE_ONLY=${params.ORIGINAL_LANGUAGE_ONLY}
           - PROCESS_UID=${params.PROCESS_UID}
           - PROCESS_GID=${params.PROCESS_GID}
           - MEDIA_UID=${params.MEDIA_UID}
@@ -104,8 +97,8 @@ steps:
         sh -c 'set -e;
         apt-get update -qq;
         apt-get install -y -qq --no-install-recommends python3 ca-certificates >/dev/null;
-        python3 /app/backdrop-generate.py'
-    output: BACKDROP_RESULT
+        python3 /app/trailer-fetch.py'
+    output: TRAILER_RESULT
     retry_policy:
       limit: 2
       interval_sec: 600

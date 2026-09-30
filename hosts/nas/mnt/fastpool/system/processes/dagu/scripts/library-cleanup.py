@@ -19,6 +19,14 @@ Rules:
     (local-trailer extras, music artist.nfo) store a literal path to a specific
     extrafanart/extrathumbs image; every rename/removal here is reflected back into any
     such nfo in the same folder so those references never go stale.
+  * A `*-trailer.*` video next to a movie's/series' main files is moved into trailers/
+    together with its same-named nfo (an exact duplicate of one already there is
+    dropped). trailer-fetch only ever looks inside trailers/, and replaces what it finds
+    there with its own downloads.
+  * A <name>.nfo with no <name>.<media> beside it (an upgraded/renamed video's old nfo,
+    a replaced trailer's Emby nfo) is deleted. Folder-level movie/tvshow/season.nfo are
+    kept, as is every nfo in a folder with no media at all (report-only "no video" case),
+    except trailers/.
   * Folders whose name differs only by case (e.g. "Mika" vs "MIKA", seen at both artist
     and album level in this library - always one fully-populated folder plus an empty
     leftover stub) are merged into whichever one holds more content. Exact-duplicate
@@ -50,6 +58,10 @@ from pathlib import Path
 log = logging.getLogger("library-cleanup")
 
 VIDEO_EXTS = {".mkv", ".mp4", ".avi", ".m4v", ".ts"}
+TRAILER_EXTS = VIDEO_EXTS | {".mov", ".webm"}  # keep in sync with trailer-fetch's VIDEO_EXTS
+# deliberately wide: a missing ext here gets that video's nfo deleted as orphaned
+MEDIA_EXTS = TRAILER_EXTS | {".wmv", ".mpg", ".mpeg", ".divx", ".flv", ".m2ts", ".vob", ".ifo", ".iso", ".ogv", ".3gp"}
+FOLDER_NFOS = {"movie.nfo", "tvshow.nfo", "season.nfo"}
 AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".ogg", ".wav", ".wma", ".aac"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 CRUFT_NAMES = {"thumbs.db", "desktop.ini", ".ds_store", "_imgdb.nfo"}
@@ -297,11 +309,12 @@ def next_fanart_name(existing: set[str], ext: str) -> str:
 
 def fix_nfo_fanart_refs(item_dir: Path, rename_map: dict[str, str]) -> int:
     """Rewrite <fanart>...extrafanart|extrathumbs/<name></fanart> references in any
-    nfo directly under item_dir (Emby's local-trailer/artist nfos - see module docstring)
-    so a renamed or merged-away file's old name doesn't go stale. Collapses a line to
-    nothing if the rewrite would leave two <fanart> entries pointing at the same file."""
+    nfo directly under item_dir or its trailers/ (Emby's local-trailer/artist nfos - see
+    module docstring) so a renamed or merged-away file's old name doesn't go stale.
+    Collapses a line to nothing if the rewrite would leave two <fanart> entries pointing
+    at the same file."""
     fixed = 0
-    for nfo in sorted(item_dir.glob("*.nfo")):
+    for nfo in sorted([*item_dir.glob("*.nfo"), *item_dir.glob("trailers/*.nfo")]):
         try:
             text = nfo.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -438,6 +451,70 @@ def consolidate_music_extrathumbs(artist_dir: Path, findings: dict, moved: list[
         log.warning("rmdir %s: %s", extrathumbs_dir, e)
 
 
+# --------------------------------------------------------------------------- trailers
+
+def is_loose_trailer(f: Path) -> bool:
+    return f.stem.lower().endswith("-trailer") and f.suffix.lower() in TRAILER_EXTS
+
+
+def consolidate_trailers(item_dir: Path, findings: dict, moved: list[str], deleted: list[str]) -> None:
+    """Move loose trailers into trailers/, taking a same-named .nfo along. When the video
+    is an exact duplicate of one already there, its nfo is moved only if that one has none
+    (nfos are cheap to re-derive, so an existing one wins)."""
+    trailers_dir = item_dir / "trailers"
+    for f in sorted(p for p in item_dir.iterdir() if p.is_file() and is_loose_trailer(p)):
+        findings["loose_trailers"].append(str(f))
+        if not APPLY:
+            continue
+        nfo = f.with_suffix(".nfo")
+        dest = trailers_dir / f.name
+        if dest.exists() and dest.stat().st_size == f.stat().st_size and sha256_file(dest) == sha256_file(f):
+            f.unlink()
+            deleted.append(str(f))
+        else:
+            n = 1
+            while dest.exists():
+                dest = trailers_dir / f"{f.stem} ({n}){f.suffix}"
+                n += 1
+            trailers_dir.mkdir(exist_ok=True)
+            f.rename(dest)
+            moved.append(f"{f} -> {dest}")
+        if not nfo.is_file():
+            continue
+        dest_nfo = dest.with_suffix(".nfo")
+        if dest_nfo.exists():
+            nfo.unlink()
+            deleted.append(str(nfo))
+        else:
+            nfo.rename(dest_nfo)
+            moved.append(f"{nfo} -> {dest_nfo}")
+
+
+# --------------------------------------------------------------------------- orphaned nfos
+
+def clean_orphan_nfos(item_dir: Path, findings: dict, deleted: list[str]) -> None:
+    """Delete <name>.nfo files with no <name>.<media> next to them (an upgraded/renamed
+    video's old nfo, a replaced trailer's Emby nfo), anywhere under item_dir. Folder-level
+    nfos are kept, and so is every nfo in a folder holding no media at all - that's the
+    report-only "no video" case - except trailers/, which trailer-fetch may empty."""
+    for dirpath, _dirnames, filenames in os.walk(item_dir):
+        d = Path(dirpath)
+        media = {Path(n).stem for n in filenames if Path(n).suffix.lower() in MEDIA_EXTS}
+        if not media and d.name.lower() != "trailers":
+            continue
+        for name in sorted(filenames):
+            low = name.lower()
+            if not low.endswith(".nfo") or low in FOLDER_NFOS or low in CRUFT_NAMES:
+                continue
+            if Path(name).stem in media:
+                continue
+            f = d / name
+            findings["orphan_nfos"].append(str(f))
+            if APPLY:
+                f.unlink(missing_ok=True)
+                deleted.append(str(f))
+
+
 # --------------------------------------------------------------------------- case-duplicate folders
 
 def merge_dir_tree(src: Path, dst: Path, findings: dict, moved: list[str], deleted: list[str]) -> None:
@@ -514,11 +591,14 @@ def scan_movies(findings: dict, moved: list[str], deleted: list[str]) -> None:
     find_and_merge_case_duplicates(MOVIES_DIR, findings, moved, deleted)
     movie_dirs = sorted(p for p in MOVIES_DIR.iterdir() if p.is_dir())
     for i, folder in enumerate(movie_dirs, 1):
-        videos = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in VIDEO_EXTS]
+        videos = [f for f in folder.iterdir()
+                  if f.is_file() and f.suffix.lower() in VIDEO_EXTS and not is_loose_trailer(f)]
         if not videos:
             findings["movies_no_video"].append(str(folder))
         elif len(videos) > 1:
             findings["movies_multiple_videos"].append(f"{folder} ({len(videos)} files)")
+        consolidate_trailers(folder, findings, moved, deleted)
+        clean_orphan_nfos(folder, findings, deleted)
         consolidate_fanart(folder, findings, moved, deleted)
         if i % 200 == 0:
             log.info("movies: %d/%d scanned", i, len(movie_dirs))
@@ -540,6 +620,8 @@ def scan_series(findings: dict, moved: list[str], deleted: list[str]) -> None:
             for v in videos:
                 if not v.with_suffix(".nfo").exists():
                     findings["episodes_missing_nfo"].append(str(v))
+        consolidate_trailers(show, findings, moved, deleted)
+        clean_orphan_nfos(show, findings, deleted)
         consolidate_fanart(show, findings, moved, deleted)
 
 
@@ -569,6 +651,8 @@ def main() -> int:
         "cruft_files": [],
         "broken_backdrops": [],
         "oversized_backdrops": [],
+        "loose_trailers": [],
+        "orphan_nfos": [],
         "loose_fanart": [],
         "duplicate_fanart": [],
         "nfo_fanart_fixed": [],
@@ -615,7 +699,7 @@ def main() -> int:
     report_path.write_text(json.dumps(report, indent=1, sort_keys=True))
     (DATA_DIR / "latest.json").write_text(json.dumps(report, indent=1, sort_keys=True))
 
-    log.info("Mode: %s", "APPLY (cruft deleted, fanart moved/deduped, case-duplicates merged)"
+    log.info("Mode: %s", "APPLY (cruft deleted, trailers/fanart moved/deduped, case-duplicates merged)"
               if APPLY else "report-only (nothing changed)")
     for k, v in findings.items():
         log.info("%s: %d", k, len(v))

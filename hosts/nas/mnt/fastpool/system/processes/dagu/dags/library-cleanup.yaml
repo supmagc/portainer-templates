@@ -18,7 +18,7 @@ steps:
       pull: missing
       auto_remove: true
       volumes:
-        - /mnt/fastpool/system/processes/dagu/scripts/library_cleanup.py:/app/library_cleanup.py:ro
+        - /mnt/fastpool/system/processes/dagu/scripts/library-cleanup.py:/app/library-cleanup.py:ro
         - /mnt/fastpool/system/processes/dagu/job-data/library-cleanup:/data
         - /mnt/rightpool/multimedia/movies:/media/movies
         - /mnt/rightpool/multimedia/series:/media/tv
@@ -31,5 +31,5 @@ steps:
         sh -c 'set -e;
         apt-get update -qq;
         apt-get install -y -qq --no-install-recommends ffmpeg >/dev/null;
-        python3 /app/library_cleanup.py'
+        python3 /app/library-cleanup.py'
     output: LIBRARY_CLEANUP_RESULT

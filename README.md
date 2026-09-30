@@ -40,6 +40,7 @@ consumer. Values come from Portainer's per-stack environment UI, not a committed
 | `compose/docker-compose-nextcloud.yml` | `nextcloud` | Nextcloud (+ cron/web/onlyoffice/rebuilder sidecars) and its dedicated MariaDB |
 | `compose/docker-compose-utilities.yml` | `utilities` | MariaDB, Redis, RabbitMQ, Watchtower, phpMyAdmin, flaresolverr, chromedp, dupeguru, tdarr |
 | `compose/docker-compose-syncthing.yml` | `syncthing` | Syncthing |
+| `compose/docker-compose-household.yml` | `household` | Mealie (recipes), Vikunja (tasks), both on the shared `utilities` Postgres. Data lives under `/mnt/fastpool/system/nextcloud/` as `nas_nextcloud`, ahead of an eventual merge into the `nextcloud` stack |
 
 Alerting is **native Grafana alerting** (contact point + notification policy configured
 in the Grafana UI, alert *rules* provisioned as YAML) — there is no Alertmanager or
