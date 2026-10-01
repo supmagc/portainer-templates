@@ -43,9 +43,14 @@ var plugin = function (args) {
 
     var vStream = args.inputFileObj.ffProbeData.streams.find(function (s) { return s.codec_type === 'video'; });
 
-    var primaries = (vStream.color_primaries && vStream.color_primaries !== 'unknown') ? vStream.color_primaries : 'bt709';
-    var transfer = (vStream.color_transfer && vStream.color_transfer !== 'unknown') ? vStream.color_transfer : 'bt709';
-    var space = (vStream.color_space && vStream.color_space !== 'unknown') ? vStream.color_space : 'bt709';
+    // ffprobe's tag names aren't all valid ffmpeg option values (verify via `ffmpeg -h full`)
+    var trcOptionName = { bt470m: 'gamma22', bt470bg: 'gamma28' };
+    var spaceOptionName = { gbr: 'rgb' };
+    var known = function (v) { return v && v !== 'unknown' && v !== 'reserved'; };
+
+    var primaries = known(vStream.color_primaries) ? vStream.color_primaries : 'bt709';
+    var transfer = known(vStream.color_transfer) ? (trcOptionName[vStream.color_transfer] || vStream.color_transfer) : 'bt709';
+    var space = known(vStream.color_space) ? (spaceOptionName[vStream.color_space] || vStream.color_space) : 'bt709';
     var range = (vStream.color_range === 'pc') ? 'pc' : 'tv';
 
     args.variables.ffmpegCommand.overallOuputArguments.push(
