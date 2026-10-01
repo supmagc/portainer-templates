@@ -69,8 +69,8 @@ steps:
           - SONARR_URL=http://sonarr:8989
           - SONARR_API_KEY=${env.SONARR_API_KEY}
           - PATH_MAP=/movies=/media/movies;/tv=/media/tv
-          - MEDIASERVER_TYPE=emby
-          - MEDIASERVER_URL=http://emby:8096
+          - MEDIASERVER_TYPE=jellyfin
+          - MEDIASERVER_URL=http://jellyfin:8196
           - MEDIASERVER_API_KEY=${env.MEDIASERVER_API_KEY}
           - LOUDNESS_LUFS=-16
           - DOWNLOAD_DELAY=5
@@ -80,6 +80,7 @@ steps:
           - PROCESS_GID=${params.PROCESS_GID}
           - MEDIA_UID=${params.MEDIA_UID}
           - MEDIA_GID=${params.MEDIA_GID}
+          - DEBIAN_FRONTEND=noninteractive
       command: python3 /app/themerr-fetch.py
     output: THEMERR_RESULT
     retry_policy:

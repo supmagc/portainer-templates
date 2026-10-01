@@ -33,12 +33,12 @@ consumer. Values come from Portainer's per-stack environment UI, not a committed
 | File | Stack | Contains |
 |---|---|---|
 | `compose/docker-compose-networking.yml` | `networking` | Traefik (internal), Traefik-Edge (WAN-facing), step-ca (internal CA), whoami |
-| `compose/docker-compose-monitoring.yml` | `monitoring` | Prometheus, Grafana, Loki, Promtail, cAdvisor, node-exporter, blackbox-exporter, snmp-exporter, smartctl-exporter, redis/mysqld exporters, one `exportarr` per *arr app, nextcloud/emby/sabnzbd/qbittorrent exporters |
-| `compose/docker-compose-multimedia.yml` | `multimedia` | Emby, Sonarr, Radarr, Lidarr, Bazarr, Organizr, Seerr |
-| `compose/docker-compose-downloads.yml` | `downloads` | SABnzbd (+ cleanup sidecar), qBittorrent, Prowlarr, Spotweb |
+| `compose/docker-compose-monitoring.yml` | `monitoring` | Prometheus, Grafana, Loki, Promtail, cAdvisor, node-exporter, blackbox-exporter, snmp-exporter, smartctl-exporter, gpu-exporter, redis/mysqld/postgres exporters, one `exportarr` per *arr app, nextcloud/emby/sabnzbd/qbittorrent exporters |
+| `compose/docker-compose-multimedia.yml` | `multimedia` | Emby, Jellyfin (trial), Sonarr, Radarr, Lidarr, Bazarr, Organizr, Seerr, Navidrome, WatchState |
+| `compose/docker-compose-downloads.yml` | `downloads` | SABnzbd (+ cleanup sidecar), qBittorrent, Prowlarr, Spotweb, BitMagnet |
 | `compose/docker-compose-extras.yml` | `extras` | stash, namer, whisparr |
 | `compose/docker-compose-nextcloud.yml` | `nextcloud` | Nextcloud (+ cron/web/onlyoffice/rebuilder sidecars) and its dedicated MariaDB |
-| `compose/docker-compose-utilities.yml` | `utilities` | MariaDB, Redis, RabbitMQ, Watchtower, phpMyAdmin, flaresolverr, chromedp, dupeguru, tdarr |
+| `compose/docker-compose-utilities.yml` | `utilities` | MariaDB, PostgreSQL, Redis, RabbitMQ, Watchtower, phpMyAdmin, Dagu, chromedp, dupeguru, tdarr |
 | `compose/docker-compose-syncthing.yml` | `syncthing` | Syncthing |
 | `compose/docker-compose-household.yml` | `household` | Mealie (recipes), Vikunja (tasks), both on the shared `utilities` Postgres. Data lives under `/mnt/fastpool/system/nextcloud/` as `nas_nextcloud`, ahead of an eventual merge into the `nextcloud` stack |
 

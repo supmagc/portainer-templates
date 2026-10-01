@@ -83,8 +83,8 @@ steps:
           - SONARR_URL=http://sonarr:8989
           - SONARR_API_KEY=${env.SONARR_API_KEY}
           - PATH_MAP=/movies=/media/movies;/tv=/media/tv
-          - MEDIASERVER_TYPE=emby
-          - MEDIASERVER_URL=http://emby:8096
+          - MEDIASERVER_TYPE=jellyfin
+          - MEDIASERVER_URL=http://jellyfin:8196
           - MEDIASERVER_API_KEY=${env.MEDIASERVER_API_KEY}
           - DATA_DIR=/data
           - N_SAMPLES=${params.N_SAMPLES}

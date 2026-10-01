@@ -16,8 +16,8 @@ the repo root and under `docs/`; read them in this order when picking up work he
      bring-up chain, the openHABian Caddy reverse proxy and its step-ca / acme.sh cert.
    - **[docs/backups.md](docs/backups.md)** — the openHABian Amanda dual-storage backup
      and the SD-card mirroring guard rails.
-   - **[docs/multimedia.md](docs/multimedia.md)** — the *arr / Emby / download stacks and
-     their exporter quirks.
+   - **[docs/multimedia.md](docs/multimedia.md)** — the *arr / Emby / Jellyfin / download
+     stacks, their exporter quirks, and the Seerr↔Jellyfin plugin gotchas.
 3. **[AGENTS.md](AGENTS.md)** — conventions to follow while working here: the secret-
    handling rules (non-negotiable), the deploy workflow, the "verify before writing"
    discipline, and scope-discipline norms.

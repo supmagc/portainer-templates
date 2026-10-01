@@ -15,8 +15,9 @@ area — it'll save you from re-discovering things the hard way.
   bring-up chain, and the openHABian Caddy reverse proxy plus its step-ca / acme.sh cert.
 - **[backups.md](backups.md)** — the openHABian Amanda dual-storage backup (local SSD +
   NFS→NAS→Backblaze), its phased bring-up, and the SD-card mirroring guard rails.
-- **[multimedia.md](multimedia.md)** — the *arr / Emby / download stacks and their
-  exporter quirks (`exportarr-prowlarr`, Seerr).
+- **[multimedia.md](multimedia.md)** — the *arr / Emby / Jellyfin / download stacks, their
+  exporter quirks (`exportarr-prowlarr`, Seerr), and Seerr's Jellyfin link and how the
+  Jellyfin home-screen plugins match Seerr users.
 - **[multimedia-library-layout.md](multimedia-library-layout.md)** — the canonical on-disk
   layout for the movies/series/music libraries (verified against Emby/Jellyfin naming) and
   the cleanup categories the `library-cleanup` Dagu DAG scans for.

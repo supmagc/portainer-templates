@@ -444,8 +444,8 @@ mechanism (`themerr-fetch/radarr-api-key` etc.), same as `mariadb-backup`/
 manual step this DAG still has. (Dagu's secrets spec confirms `ref:` requires a running
 server and can't be satisfied by deploying files alone; the file-backed `provider: file`
 alternative would avoid that, but this repo prefers `ref:` for consistency with the other
-two DAGs' secrets.) Defaults to refreshing Emby's library (`MEDIASERVER_TYPE=emby`); switch to
-Jellyfin by changing that one env line if the trial becomes primary.
+two DAGs' secrets.) Refreshes Jellyfin's library (`MEDIASERVER_TYPE=jellyfin`, switched from
+Emby 2026-10-01).
 
 Ownership: both steps run as root (needed for `vendor`'s docker-socket access and for
 the arbitrary-uid `chown`s below — a non-root process can't `chown` to a uid/gid it
@@ -569,7 +569,7 @@ otherwise produces — check the Dagu UI directly for now.
 
 ### trailer-fetch
 
-Built as a replacement candidate for Trailarr. Trailarr offers no crop option, and its
+Replaces Trailarr (removed from the `multimedia` stack 2026-10-01). Trailarr offers no crop option, and its
 trailers have letterbox bars baked in. Jellyfin's Media Bar Enhanced plugin plays local
 trailers zoomed to fill the slide (`object-fit: cover`), so those bars show up as black
 bands across the home screen. `trailer-fetch` writes up to `MAX_TRAILERS` (5)
@@ -689,8 +689,8 @@ the same container paths Emby and Jellyfin use. That lets it send a targeted
 `POST /Library/Media/Updated` with the changed folders (the same call Sonarr/Radarr's own
 Emby connector makes, and verified in Jellyfin's `LibraryController`) instead of a full
 library scan. Like the sibling jobs it targets one server via `MEDIASERVER_TYPE` (`emby` or
-`jellyfin`), `MEDIASERVER_URL` and `MEDIASERVER_API_KEY`; switch all three DAGs together
-when the household moves to Jellyfin.
+`jellyfin`), `MEDIASERVER_URL` and `MEDIASERVER_API_KEY`. All three DAGs were switched to
+Jellyfin together on 2026-10-01; keep them on the same server.
 
 **Deploying needs the TMDB key and API-key secrets registered as Dagu `ref:` secrets.**
 Same as the sibling jobs: `trailer-fetch/{radarr,sonarr,tmdb,mediaserver}-api-key`. Also

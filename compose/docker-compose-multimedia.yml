@@ -332,7 +332,6 @@ services:
       - /mnt/fastpool/system/multimedia/seerr:/app/config
     environment:
       - TZ=${APP_TIMEZONE}
-      - JELLYFIN_TYPE=emby
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/status || exit 1
       interval: 1m30s
@@ -374,6 +373,38 @@ services:
       - ND_PROMETHEUS_ENABLED=true
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:4533/ping || exit 1
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  watchstate:
+    image: ghcr.io/arabcoders/watchstate:latest
+    container_name: watchstate
+    user: "${APP_USER}:${APP_GROUP}"
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.watchstate-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.watchstate.rule=Host(`watchstate.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.watchstate.entrypoints=web"
+      - "traefik.http.routers.watchstate.middlewares=watchstate-https-redirect"
+      - "traefik.http.routers.watchstate-secure.rule=Host(`watchstate.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.watchstate-secure.entrypoints=web-secure"
+      - "traefik.http.routers.watchstate-secure.tls=true"
+      - "traefik.http.routers.watchstate-secure.tls.certresolver=stepca"
+    ports:
+      - ${NETWORK_INTERFACE}:8180:8080/tcp
+    volumes:
+      - /mnt/fastpool/system/multimedia/watchstate:/config
+    environment:
+      - TZ=${APP_TIMEZONE}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/api/system/healthcheck" ]
       interval: 1m30s
       timeout: 10s
       retries: 6

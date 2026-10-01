@@ -79,8 +79,8 @@ steps:
           - SONARR_API_KEY=${env.SONARR_API_KEY}
           - TMDB_API_KEY=${env.TMDB_API_KEY}
           - PATH_MAP=/movies=/mnt/movies;/tv=/mnt/series
-          - MEDIASERVER_TYPE=emby
-          - MEDIASERVER_URL=http://emby:8096
+          - MEDIASERVER_TYPE=jellyfin
+          - MEDIASERVER_URL=http://jellyfin:8196
           - MEDIASERVER_API_KEY=${env.MEDIASERVER_API_KEY}
           - DATA_DIR=/data
           - DOWNLOAD_DELAY=5

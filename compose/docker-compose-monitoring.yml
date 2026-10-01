@@ -10,7 +10,7 @@ networks:
   nextcloud_default:
     external: true   # nextcloud-web
   multimedia_default:
-    external: true   # emby, sonarr, radarr, lidarr, bazarr
+    external: true   # emby, jellyfin, sonarr, radarr, lidarr, bazarr
   downloads_default:
     external: true   # prowlarr, sabnzbd, qbittorrent
   networking_default:
@@ -403,6 +403,22 @@ services:
     command:
       - "--emby.addr=http://emby:8096/emby"
       - "--emby.token=${EMBY_API_KEY}"
+
+  jellyfin-exporter:
+    image: rebelcore/jellyfin-exporter:latest
+    container_name: jellyfin-exporter
+    networks:
+      - default
+      - multimedia_default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    command:
+      - "--collector.transcoding"
+    environment:
+      - JELLYFIN_ADDRESS=http://jellyfin:8096
+      - JELLYFIN_TOKEN=${JELLYFIN_API_KEY}
 
   sabnzbd-exporter:
     image: msroest/sabnzbd_exporter:latest
