@@ -340,7 +340,7 @@ Prometheus `file_sd` JSON files to a bind-mounted dir
 (`/mnt/fastpool/system/processes/prometheus/file_sd`, mounted read-only into the
 `prometheus` container): `traefik-http.json` / `traefik-https.json` (split by whether the
 router has TLS, feeding the `blackbox-traefik-http` / `blackbox-traefik-https` jobs and
-the existing `http_2xx` / `http_2xx_insecure` modules) and `traefik-tls-cert.json` (TLS
+the existing `http_2xx_redirect` / `http_2xx_insecure` modules) and `traefik-tls-cert.json` (TLS
 routers only, `host:443` targets, feeding `blackbox-traefik-tls-cert` +  `tls_connect` —
 this is the "possibly certificates" half: `tls_connect`'s `probe_ssl_earliest_cert_expiry`
 covers cert-expiry alerting for free, no separate cert-parsing metric needed). Add a
@@ -378,6 +378,29 @@ dual-probe pattern for `step-ca` (see `CertExpiringSoon`'s own comment in
 `grafana/provisioning/alerting/rules.yml`) and is left alone for the same reason:
 redundant confirmation via two independent probe methods, not a bug. Revisit if the
 doubled alert-instance volume becomes noisy in practice.
+
+**HTTP routers don't follow the redirect (2026-10-01).** `blackbox-traefik-http` uses
+`http_2xx_redirect` (`no_follow_redirects`), not `http_2xx`. Every internal `http://`
+router redirects to https. When `http_2xx` followed that redirect, it failed certificate
+verification against step-ca (`x509: certificate signed by unknown authority`), so about
+30 targets were failing all the time. Traefik's `redirectScheme` answers a GET with a 302,
+or a 301 if `permanent` is set (`pkg/middlewares/redirect/redirect.go`), and both codes are
+already in that module's accepted list. Whether the https side works is
+`blackbox-traefik-https`'s job.
+
+**tls-cert jobs need two failed probes in a row (2026-10-01).** Both tls-cert jobs scrape
+every 5m, so a single failed sample stayed the latest `probe_success` value for 5 minutes,
+long enough to satisfy `ProbeFailing`'s `for: 3m`. Two short nightly blips fired this
+almost every day:
+
+- **~03:00–03:30:** openHABian's `acme-renew.sh` stops Caddy to free port 80 for the
+  renewal (`connection refused` on `*.openhabian…:443`).
+- **05:55:** the OpenWrt adblock list refresh restarts DNS for a few seconds (`lookup …
+  on 127.0.0.11:53: server misbehaving`).
+
+The rule now reads the tls-cert jobs through `max_over_time(…[11m])`. An 11-minute window
+always spans at least two 5-minute samples, so only a failure that lasts two probes in a
+row (~10+ min) alerts. The 30-second probe jobs are unchanged.
 
 ## Dagu (container-native scheduler)
 

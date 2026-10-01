@@ -188,7 +188,7 @@ scrape_configs:
 
   - job_name: blackbox-traefik-http
     metrics_path: /probe
-    params: {module: [http_2xx]}
+    params: {module: [http_2xx_redirect]}
     scrape_interval: 30s
     file_sd_configs:
       - files: ["/etc/prometheus/file_sd/traefik-http.json"]

@@ -17,7 +17,7 @@ modules:
     prober: http
     http:
       valid_status_codes: [200, 301, 302, 401]
-      no_follow_redirects: true   # nextcloud-web force-redirects to https, which it doesn't listen on internally (Traefik terminates TLS at the edge only) - a redirect response still proves the app is up
+      no_follow_redirects: true   # a redirect proves the router/app is up - nextcloud-web (no internal https) and every Traefik http→https router; add 307/308 only if a router sets a non-default redirect statusCode
       preferred_ip_protocol: ip4
       ip_protocol_fallback: false
   icmp:

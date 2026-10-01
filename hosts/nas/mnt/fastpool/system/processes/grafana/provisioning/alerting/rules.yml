@@ -238,7 +238,10 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: probe_success
+              # tls-cert jobs scrape every 5m - an 11m max_over_time needs 2+ consecutive failed probes, not one
+              expr: >-
+                probe_success{job!~".*tls-cert"}
+                or max_over_time(probe_success{job=~".*tls-cert"}[11m])
               instant: true
               refId: A
           - refId: B
@@ -268,7 +271,7 @@ groups:
           severity: critical
         annotations:
           summary: "{{ $labels.instance }} unreachable"
-          description: "Blackbox probe against {{ $labels.instance }} (job={{ $labels.job }}) has been failing for 3+ minutes."
+          description: "Blackbox probe against {{ $labels.instance }} (job={{ $labels.job }}) has been failing for 3+ minutes (tls-cert jobs: 2+ consecutive 5-minute probes)."
 
       - uid: pool-space-low
         title: PoolSpaceLow
