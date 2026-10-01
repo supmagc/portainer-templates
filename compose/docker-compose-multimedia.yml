@@ -267,45 +267,6 @@ services:
       retries: 6
       start_period: 30s
 
-  trailarr:
-    image: nandyalu/trailarr:latest
-    container_name: trailarr
-    runtime: nvidia
-    networks:
-      - default
-    pull_policy: missing
-    restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      - "traefik.enable=true"
-      - "traefik.http.middlewares.trailarr-https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.routers.trailarr.rule=Host(`trailarr.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.trailarr.entrypoints=web"
-      - "traefik.http.routers.trailarr.middlewares=trailarr-https-redirect"
-      - "traefik.http.routers.trailarr-secure.rule=Host(`trailarr.${NETWORK_DOMAIN}`)"
-      - "traefik.http.routers.trailarr-secure.entrypoints=web-secure"
-      - "traefik.http.routers.trailarr-secure.tls=true"
-      - "traefik.http.routers.trailarr-secure.tls.certresolver=stepca"
-    ports:
-      - ${NETWORK_INTERFACE}:7889:7889/tcp
-    volumes:
-      - /mnt/fastpool/system/multimedia/trailarr:/config
-      - /mnt/rightpool/multimedia/movies:/media/movies
-      - /mnt/rightpool/multimedia/series:/media/tv
-    environment:
-      - PGID=${APP_USER}
-      - PUID=${APP_GROUP}
-      - TZ=${APP_TIMEZONE}
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
   organizr:
     image: organizr/organizr:latest
     container_name: organizr
