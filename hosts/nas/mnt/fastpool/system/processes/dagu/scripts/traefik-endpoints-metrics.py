@@ -22,6 +22,8 @@ SOURCES = {
     "traefik": "http://traefik:8080/api/http/routers",
     "traefik-edge": "http://traefik-edge:8080/api/http/routers",
 }
+# router name -> https probe path, for backends that 404 on "/"
+PROBE_PATHS = {"loki-secure": "/ready", "step-ca": "/health"}
 HOST_RULE_RE = re.compile(r"Host\(`([^`]+)`\)")
 
 
@@ -65,7 +67,8 @@ for source, url in SOURCES.items():
             seen.add(key)
             labels = {"source": source, "router": router_name}
             if has_tls:
-                https_targets.append({"targets": [f"https://{host}/"], "labels": labels})
+                path = PROBE_PATHS.get(router_name, "/")
+                https_targets.append({"targets": [f"https://{host}{path}"], "labels": labels})
                 tls_cert_targets.append({"targets": [f"{host}:443"], "labels": labels})
             else:
                 http_targets.append({"targets": [f"http://{host}/"], "labels": labels})

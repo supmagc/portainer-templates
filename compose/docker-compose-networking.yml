@@ -55,6 +55,7 @@ services:
       - "--certificatesresolvers.stepca.acme.httpchallenge=true"
       - "--certificatesresolvers.stepca.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.stepca.acme.email=admin@bellecerise.be"
+      - "--serversTransport.insecureSkipVerify=true"   # only step-ca has an https backend; labels can't define a per-service transport and Traefik dials the container IP, which its cert doesn't cover
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
@@ -114,6 +115,8 @@ services:
       - "traefik.http.routers.step-ca.entrypoints=web,web-secure"
       - "traefik.http.routers.step-ca.tls=true"
       - "traefik.http.routers.step-ca.tls.certresolver=stepca"
+      - "traefik.http.services.step-ca.loadbalancer.server.port=9000"
+      - "traefik.http.services.step-ca.loadbalancer.server.scheme=https"
     secrets:
       - source: step-ca-password
         target: /home/step/secrets/password

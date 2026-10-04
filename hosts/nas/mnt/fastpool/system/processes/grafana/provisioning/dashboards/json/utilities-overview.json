@@ -163,7 +163,7 @@
       "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
       "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
       "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"traefik\"}[$__rate_interval])) by (le))", "instant": true, "refId": "A" }] },
-    { "id": 23, "title": "Backends Down", "description": "No Data: traefik_service_server_up isn't emitted by this Traefik v3 build (upstream issue, see the Traefik row description above) - per-router reachability is covered instead by the ProbeFailing alert (probe_success{job=~\"blackbox-traefik.*\"}), no dashboard panel yet.", "type": "stat", "gridPos": { "x": 18, "y": 48, "w": 6, "h": 4 },
+    { "id": 23, "title": "Backends Down", "description": "No Data: traefik_service_server_up isn't emitted by this Traefik v3 build (upstream issue, see the Traefik row description above) - per-router reachability is covered instead by the ProbeFailing alert (probe_success{source=~\"traefik.*\"}), no dashboard panel yet.", "type": "stat", "gridPos": { "x": 18, "y": 48, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
       "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },

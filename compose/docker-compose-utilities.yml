@@ -186,6 +186,7 @@ services:
       - "traefik.http.routers.rabbitmq-secure.entrypoints=web-secure"
       - "traefik.http.routers.rabbitmq-secure.tls=true"
       - "traefik.http.routers.rabbitmq-secure.tls.certresolver=stepca"
+      - "traefik.http.services.rabbitmq.loadbalancer.server.port=15672"
     ports:
       - ${NETWORK_INTERFACE}:15672:15672/tcp
     volumes:

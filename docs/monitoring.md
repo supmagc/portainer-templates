@@ -339,19 +339,38 @@ hand-maintained. Traefik is the source of truth for what it's actually routing i
 Prometheus `file_sd` JSON files to a bind-mounted dir
 (`/mnt/fastpool/system/processes/prometheus/file_sd`, mounted read-only into the
 `prometheus` container): `traefik-http.json` / `traefik-https.json` (split by whether the
-router has TLS, feeding the `blackbox-traefik-http` / `blackbox-traefik-https` jobs and
-the existing `http_2xx_redirect` / `http_2xx_insecure` modules) and `traefik-tls-cert.json` (TLS
-routers only, `host:443` targets, feeding `blackbox-traefik-tls-cert` +  `tls_connect` —
+router has TLS, feeding the `blackbox-redirect` / `blackbox-https` jobs and
+the `http_2xx_redirect` / `http_2xx_insecure` modules) and `traefik-tls-cert.json` (TLS
+routers only, `host:443` targets, feeding `blackbox-tls-cert` +  `tls_connect` —
 this is the "possibly certificates" half: `tls_connect`'s `probe_ssl_earliest_cert_expiry`
 covers cert-expiry alerting for free, no separate cert-parsing metric needed). Add a
 `traefik.enable=true` service to any stack and it gets probed within 15 minutes, no
 Prometheus edit.
 
+**One job per blackbox module (2026-10-04).** `params.module` is job-scoped, so there is one
+blackbox job per module (`blackbox-http`, `-redirect`, `-https`, `-tls-cert`, `-icmp`); the
+static targets and the file_sd targets of a module share its job, told apart by the
+`source` label (`static` / `traefik` / `traefik-edge`). Previously there were separate
+`blackbox-traefik-*` jobs. Keep the `tls-cert` suffix on the job name — the alert rules match
+`job=~".*tls-cert"`.
+
+**Per-router probe path (2026-10-04).** The discovery script probes `/` unless the router is
+listed in `PROBE_PATHS` (currently `loki-secure` → `/ready` and `step-ca` → `/health`; both 404 on `/`). Add an entry
+for any other backend with no root page rather than widening the module's `valid_status_codes`.
+
+**step-ca's Traefik router (2026-10-04).** step-ca's port 9000 is HTTPS-only, so the router
+needs `loadbalancer.server.scheme=https` + `port=9000` and Traefik needs the global
+`--serversTransport.insecureSkipVerify=true` (docker labels can't define a per-service
+transport; Traefik dials the container IP, which step-ca's cert doesn't cover). ACME
+clients (Traefik's own resolver, `acme-renew.sh`) never use this router — they hit the
+published `:8999` directly. Also: a multi-port image (rabbitmq) needs an explicit
+`loadbalancer.server.port` label or Traefik may pick the wrong port and 502.
+
 **Pruned (2026-09-21):** all six now-redundant TLS entries were dropped from the
 hand-maintained `blackbox-tls-cert` list — the three `*.media.bellecerise.local` hosts
 (`emby`, `nextcloud`, `seerr`, fronted by `traefik`) and the three `*.bellecerise.be`
 public hosts (fronted by `traefik-edge`'s dynamic-file routers, e.g. `emby.yml`). All six
-are now covered by `blackbox-traefik-tls-cert` file_sd instead. `blackbox-http`'s
+are now covered by the file_sd half of `blackbox-tls-cert` instead. `blackbox-http`'s
 `emby`/`rabbitmq`/`seerr` container-DNS targets stay: those probe the app directly
 (`http://emby:8096/...`), not the same thing as Traefik's own router-level probe.
 
@@ -368,8 +387,8 @@ metrics-block variant — competing for the same host too; harmless since it sha
 same underlying cert, just means the `router` label picked isn't always the "main" one.)
 
 **Known remaining duplication (by design):** every `-secure` router's cert still gets
-reported by *two* jobs — `blackbox-traefik-https` (an `https://host/` probe, reachability
-is the point, cert-expiry data is a free side effect) and `blackbox-traefik-tls-cert` (a
+reported by *two* jobs — `blackbox-https` (an `https://host/` probe, reachability
+is the point, cert-expiry data is a free side effect) and `blackbox-tls-cert` (a
 dedicated `host:443` `tls_connect` probe). `CertExpiringSoon` is scoped to
 `job=~".*tls-cert"` so it only counts the dedicated one, but `ProbeFailing` (plain
 `probe_success`, no job filter) still fires on both — a real Traefik outage trips two
@@ -379,16 +398,16 @@ dual-probe pattern for `step-ca` (see `CertExpiringSoon`'s own comment in
 redundant confirmation via two independent probe methods, not a bug. Revisit if the
 doubled alert-instance volume becomes noisy in practice.
 
-**HTTP routers don't follow the redirect (2026-10-01).** `blackbox-traefik-http` uses
+**HTTP routers don't follow the redirect (2026-10-01).** the Traefik-discovered http targets (`blackbox-redirect`) use
 `http_2xx_redirect` (`no_follow_redirects`), not `http_2xx`. Every internal `http://`
 router redirects to https. When `http_2xx` followed that redirect, it failed certificate
 verification against step-ca (`x509: certificate signed by unknown authority`), so about
 30 targets were failing all the time. Traefik's `redirectScheme` answers a GET with a 302,
 or a 301 if `permanent` is set (`pkg/middlewares/redirect/redirect.go`), and both codes are
 already in that module's accepted list. Whether the https side works is
-`blackbox-traefik-https`'s job.
+`blackbox-https`'s job.
 
-**tls-cert jobs need two failed probes in a row (2026-10-01).** Both tls-cert jobs scrape
+**tls-cert jobs need two failed probes in a row (2026-10-01).** The tls-cert job scrapes
 every 5m, so a single failed sample stayed the latest `probe_success` value for 5 minutes,
 long enough to satisfy `ProbeFailing`'s `for: 3m`. Two short nightly blips fired this
 almost every day:
@@ -847,7 +866,7 @@ Added 2026-09-09 alongside the BitMagnet indexer and its shared Postgres cluster
   `http_2xx_redirect` module/job — blackbox's `params.module` is job-scoped, not
   target-scoped, which is why mixed-behavior targets need their own job repeatedly
   throughout `prometheus.yml`, e.g. `blackbox-http` vs `blackbox-https` vs
-  `blackbox-http-redirect` vs `blackbox-tls-cert`).
+  `blackbox-redirect` vs `blackbox-tls-cert`).
 - **SNMP (switch/APs)**: works end-to-end now, after a chain of firewall/routing fixes and
   a scrape-timeout bump — see [network.md](network.md#snmp-switchaps).
 - **Multimedia exporters** (`exportarr-prowlarr`, Seerr): see
