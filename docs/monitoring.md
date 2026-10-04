@@ -424,6 +424,15 @@ DAG-spawned containers) — `mariadb-backup` reuses the existing
 password from a plain Portainer-env `${BITMAGNET_CLEANUP_DB_PASSWORD}` substitution,
 which doesn't apply to a DAG YAML file tracked in git.
 
+The `bitmagnet_cleanup` Postgres role needs `SELECT` on `torrents_torrent_sources`,
+`torrent_contents` and `torrents`, `DELETE` on `torrents`, **and `UPDATE` on at least one
+column of `torrents`**. That last one is because the batched delete (2026-10-01) uses
+`SELECT … FOR UPDATE SKIP LOCKED` so it skips rows the crawler has locked, and Postgres
+requires `UPDATE` privilege for row locks even when nothing gets updated. Without it the
+job fails with `permission denied for table torrents`. A column-level grant is enough
+(`GRANT UPDATE (info_hash) ON torrents TO bitmagnet_cleanup;`). The FK cascades into the
+child tables run as the table owner, so the role needs no privileges on those.
+
 `themerr-fetch` (new, not a migration) downloads theme.mp3 files from ThemerrDB into
 each Radarr/Sonarr movie/series folder, nightly at 03:30. No custom image or manual build
 step: a `vendor` step copies the static `ffmpeg` (`mwader/static-ffmpeg`) and
