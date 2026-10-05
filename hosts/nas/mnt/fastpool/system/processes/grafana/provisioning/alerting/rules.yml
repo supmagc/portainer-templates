@@ -637,7 +637,10 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: dagu_dag_runs_total_by_dag{status="failed"}
+              # Dagu emits no failed series for DAGs without failures - the `or 0*` zero-fills so every DAG that ran today is listed
+              expr: >-
+                sum by (dag) (dagu_dag_runs_total_by_dag{status="failed"})
+                or 0 * sum by (dag) (dagu_dag_runs_total_by_dag)
               instant: true
               refId: A
           - refId: B

@@ -90,6 +90,18 @@ matches nothing. See docs/monitoring.md for a worked example. Watch for any labe
 named `job` on a custom/textfile-collector metric — it collides with Prometheus's own
 scrape-config meta-label and gets silently renamed to `exported_job`.
 
+## Alert rules: list everything checked, filter in the threshold
+
+Every Grafana alert rule must make its instance list show *all* entities it checks, each
+with its current value, not only the ones that are firing. Put the firing condition in the
+threshold expression (C), never in the PromQL query: use `up`, not `up == 0`. If a metric
+only exists once something has gone wrong (e.g. Dagu's `status="failed"` series), zero-fill
+it in the query so healthy entities still appear, as in `DaguDagRunFailed`:
+`sum by (dag) (m{status="failed"}) or 0 * sum by (dag) (m)`. Filtering to scope the
+population is fine (`and scheduled_job_enabled == 1`); filtering by the alert's own
+threshold is not. Without this, a healthy system shows an empty list and it's impossible to
+see what is monitored. Limit: an entity with no series at all can't be listed.
+
 ## Git
 
 - Current branch is `master`. Branch before committing unless the user says otherwise;
