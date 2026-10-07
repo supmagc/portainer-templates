@@ -1,0 +1,39 @@
+secrets:
+  - name: DB_PASS
+    ref: postgres-backup/db-password
+
+params:
+  - name: OUTPUT_UID
+    default: 940
+  - name: OUTPUT_GID
+    default: 940
+  - name: RETENTION_DAYS
+    default: 7
+
+schedule: "30 4 * * *"
+steps:
+  - id: dump
+    action: docker.run
+    with:
+      image: postgres:17
+      pull: missing
+      network:
+        EndpointsConfig:
+          utilities_default: {}
+      auto_remove: true
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/postgres-backup.sh:/postgres-backup.sh:ro
+        - /mnt/rightpool/backup/automated/postgres:/backup
+      container:
+        env:
+          - TZ=Europe/Brussels
+          - DB_SERVER=postgres
+          - DB_PORT=5432
+          - DB_USER=backup
+          - DB_PASS=${env.DB_PASS}
+          - DB_DUMP_INCLUDE=mealie,vikunja
+          - DB_DUMP_TARGET=/backup
+          - DB_DUMP_RETENTION_DAYS=${params.RETENTION_DAYS}
+          - OUTPUT_UID=${params.OUTPUT_UID}
+          - OUTPUT_GID=${params.OUTPUT_GID}
+      command: sh /postgres-backup.sh
