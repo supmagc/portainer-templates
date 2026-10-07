@@ -42,7 +42,7 @@ Fixed device addresses:
 | OneWire | 192.168.1.153 | lan | openHAB field bus — 1-Wire gateway |
 
 All of these are the `blackbox-icmp` target list — see
-[monitoring.md](monitoring.md#icmp-reachability-probes-network-hosts).
+[endpoint-probes.md](endpoint-probes.md#icmp-reachability-probes-network-hosts).
 
 ## Network/firewall topology (OpenWrt router)
 
@@ -63,7 +63,7 @@ Resolved since that review: the `Allow-NTP-from-LAN` rule's `src 'wan'` (was a c
 bug exposing router NTP to the internet) has been corrected to `lan`.
 
 **Monitoring ICMP allows:** the `blackbox-icmp` job (see
-[monitoring.md](monitoring.md#icmp-reachability-probes-network-hosts)) pings infra hosts
+[endpoint-probes.md](endpoint-probes.md#icmp-reachability-probes-network-hosts)) pings infra hosts
 from the NAS on `lan`. The `lan`→`admin` **ICMP** allow needed for the `admin` VLAN
 targets (router `192.168.0.1`, switch, APs) has been added — the SNMP rule only permitted
 UDP/161. The `guest` / `work` router IPs (`192.168.2.1` / `192.168.3.1`) still have no
@@ -123,7 +123,7 @@ netfilter.
 
 **Symptom:** internet became "excruciatingly slow" over a couple of days, never happened
 before, only fixed by a router reboot. Coincided with standing up `bitmagnet` (see
-[multimedia.md](multimedia.md#bitmagnet-classifier)).
+[bitmagnet.md](bitmagnet.md)).
 
 **Root cause:** `bitmagnet`'s entire function is crawling the mainline DHT network — it
 opens far more short-lived UDP sessions to random internet peers than a normal torrent

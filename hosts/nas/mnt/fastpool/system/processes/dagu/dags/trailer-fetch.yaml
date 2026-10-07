@@ -31,7 +31,7 @@ params:
 schedule: "0 2 * * *"
 max_active_runs: 1
 
-# See docs/monitoring.md's trailer-fetch section for the design.
+# See docs/dagu.md's trailer-fetch section for the design.
 steps:
   - id: vendor
     action: docker.run

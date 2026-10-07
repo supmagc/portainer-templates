@@ -85,6 +85,7 @@ services:
       - VIKUNJA_SERVICE_PUBLICURL=https://vikunja.${NETWORK_DOMAIN}/
       - VIKUNJA_SERVICE_ENABLEREGISTRATION=false   # set true for first-user signup, then back to false
       - VIKUNJA_SERVICE_SECRET_FILE=/run/secrets/vikunja-secret
+      - VIKUNJA_METRICS_ENABLED=true   # unauthenticated /api/v1/metrics - blocked publicly in traefik-edge/dynamic/vikunja.yml
       - VIKUNJA_DATABASE_TYPE=postgres
       - VIKUNJA_DATABASE_HOST=postgres
       - VIKUNJA_DATABASE_DATABASE=vikunja

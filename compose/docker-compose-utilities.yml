@@ -262,7 +262,7 @@ services:
       - "910"   # nas_multimedia
       - "930"   # nas_extras
     labels:
-      - "com.centurylinklabs.watchtower.enable=true"   # update manually when idle; see docs/multimedia.md
+      - "com.centurylinklabs.watchtower.enable=true"
       - "traefik.enable=true"
       - "traefik.http.middlewares.tdarr-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.tdarr.rule=Host(`tdarr.${NETWORK_DOMAIN}`)"

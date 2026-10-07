@@ -7,6 +7,7 @@ http:
       tls:
         certResolver: dynu
       service: vikunja-public
+      priority: 1
 
     vikunja-public-redirect:
       rule: "Host(`vikunja.bellecerise.be`)"
@@ -16,10 +17,28 @@ http:
         - vikunja-public-https
       service: vikunja-public
 
+    # /api/v1/metrics has no auth of its own - keep it off the public internet;
+    # Prometheus still reaches it over the internal docker network.
+    vikunja-public-metrics-block:
+      rule: "Host(`vikunja.bellecerise.be`) && PathPrefix(`/api/v1/metrics`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      middlewares:
+        - vikunja-metrics-deny
+      service: vikunja-public
+      priority: 10
+
   middlewares:
     vikunja-public-https:
       redirectScheme:
         scheme: https
+
+    vikunja-metrics-deny:
+      ipWhiteList:
+        sourceRange:
+          - "127.0.0.1/32"
 
   services:
     vikunja-public:

@@ -2,14 +2,14 @@
 
 The canonical on-disk shape for `/mnt/rightpool/multimedia/{movies,series,music}`, and the
 cleanup categories the `library-cleanup` Dagu DAG (see
-[monitoring.md](monitoring.md#library-cleanup)) scans for. Written 2026-09-28 after
+[dagu.md](dagu.md#library-cleanup)) scans for. Written 2026-09-28 after
 surveying the live library (1633 movie folders / 3.9T, 89 shows / 1.6T, 153 artists / 140G)
 and verifying naming against current Emby and Jellyfin documentation — the existing library
 already matches these conventions closely; this mostly formalizes what's there and gives
 the cleanup DAG a spec to check against.
 
 Two things already write into these trees on a schedule and are **not** cleanup targets:
-`themerr-fetch` (theme.mp3, see its section below `monitoring.md`) and `backdrop-generate`
+`themerr-fetch` (theme.mp3, see its section in [dagu.md](dagu.md)) and `backdrop-generate`
 (backdrops/theme.mp4). Both follow an "own what we wrote, never touch what we didn't" rule
 via a state file — the cleanup DAG follows the same principle for its own categories.
 

@@ -3,7 +3,7 @@
 backdrop-generate — build Emby/Jellyfin "theme videos" (backdrops/theme.mp4) for
 Radarr/Sonarr libraries. ThemerrDB's theme-song video is tried first; when it is a
 still image (or missing/unusable), a montage of short, cut-free, motion-containing
-clips is sampled directly out of the movie/episode files instead (see docs/monitoring.md).
+clips is sampled directly out of the movie/episode files instead (see docs/dagu.md).
 
 Rules:
   * A file in backdrops/ that this tool did not write is treated as user-provided

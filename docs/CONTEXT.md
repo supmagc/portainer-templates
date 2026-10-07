@@ -11,13 +11,24 @@ area — it'll save you from re-discovering things the hard way.
   TrueNAS `midclt`-based scheduled-task monitoring, the `ContainerUnhealthy` alert and its
   fragile dependency on a `container_health_state` metric that isn't in stock cAdvisor, and
   openHABian log shipping.
+- **[dagu.md](dagu.md)** — the Dagu scheduler, its `docker.run` executor quirks and every
+  job (trailer-fetch, backdrop-generate, library-cleanup, ...).
+- **[endpoint-probes.md](endpoint-probes.md)** — ICMP reachability probes and Traefik
+  endpoint discovery for blackbox.
+- **[openhabian-monitoring.md](openhabian-monitoring.md)** — the Pi's host metrics and
+  Promtail→Loki log shipping.
 - **[network.md](network.md)** — the OpenWrt router's zone/firewall topology, the SNMP
   bring-up chain, and the openHABian Caddy reverse proxy plus its step-ca / acme.sh cert.
 - **[backups.md](backups.md)** — the openHABian Amanda dual-storage backup (local SSD +
   NFS→NAS→Backblaze), its phased bring-up, and the SD-card mirroring guard rails.
-- **[multimedia.md](multimedia.md)** — the *arr / Emby / Jellyfin / download stacks, their
-  exporter quirks (`exportarr-prowlarr`, Seerr), and Seerr's Jellyfin link and how the
-  Jellyfin home-screen plugins match Seerr users.
+- **[multimedia.md](multimedia.md)** — the *arr / Emby / Jellyfin / download stacks, and
+  Seerr's Jellyfin link and how the Jellyfin home-screen plugins match Seerr users.
+- **[multimedia-monitoring.md](multimedia-monitoring.md)** — exporter quirks for the media
+  apps (`exportarr-prowlarr`, Jellyfin, Navidrome, Seerr).
+- **[bitmagnet.md](bitmagnet.md)** — BitMagnet's custom classifier and why its database
+  grows.
+- **[gpu.md](gpu.md)** — the single shared NVENC GPU and the Watchtower/Tdarr restart
+  incident.
 - **[multimedia-library-layout.md](multimedia-library-layout.md)** — the canonical on-disk
   layout for the movies/series/music libraries (verified against Emby/Jellyfin naming) and
   the cleanup categories the `library-cleanup` Dagu DAG scans for.

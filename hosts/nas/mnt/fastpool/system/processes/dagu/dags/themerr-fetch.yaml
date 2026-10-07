@@ -24,7 +24,7 @@ params:
 schedule: "30 3 * * *"
 max_active_runs: 1
 
-# See docs/monitoring.md's themerr-fetch section for the vendor/fetch step design.
+# See docs/dagu.md's themerr-fetch section for the vendor/fetch step design.
 steps:
   - id: vendor
     action: docker.run

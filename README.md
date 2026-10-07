@@ -34,7 +34,7 @@ consumer. Values come from Portainer's per-stack environment UI, not a committed
 |---|---|---|
 | `compose/docker-compose-networking.yml` | `networking` | Traefik (internal), Traefik-Edge (WAN-facing), step-ca (internal CA), whoami |
 | `compose/docker-compose-monitoring.yml` | `monitoring` | Prometheus, Grafana, Loki, Promtail, cAdvisor, node-exporter, blackbox-exporter, snmp-exporter, smartctl-exporter, gpu-exporter, redis/mysqld/postgres exporters, one `exportarr` per *arr app, nextcloud/emby/sabnzbd/qbittorrent exporters |
-| `compose/docker-compose-multimedia.yml` | `multimedia` | Emby, Jellyfin (trial), Sonarr, Radarr, Lidarr, Bazarr, Organizr, Seerr, Navidrome, WatchState |
+| `compose/docker-compose-multimedia.yml` | `multimedia` | Emby, Jellyfin (trial), Sonarr, Radarr, Lidarr, Bazarr, Organizr, Seerr, Navidrome |
 | `compose/docker-compose-downloads.yml` | `downloads` | SABnzbd (+ cleanup sidecar), qBittorrent, Prowlarr, Spotweb, BitMagnet |
 | `compose/docker-compose-extras.yml` | `extras` | stash, namer, whisparr |
 | `compose/docker-compose-nextcloud.yml` | `nextcloud` | Nextcloud (+ cron/web/onlyoffice/rebuilder sidecars) and its dedicated MariaDB |
@@ -92,7 +92,7 @@ Currently tracked:
   Promtail tails the openHAB core / `events.log` / HabApp logs plus the systemd journal
   and **dual-ships** them to the central Loki *and* a second Loki running locally on the
   Pi (feeds the bundled Grafana's log views) — see
-  [docs/monitoring.md](docs/monitoring.md) → "openHABian log shipping".
+  [docs/openhabian-monitoring.md](docs/openhabian-monitoring.md) → "openHABian log shipping".
   Also tracked: `sdmirror-guard.sh` + `sd{rawcopy,rsync}.service.d/guard.conf`
   `ExecStartPre` drop-ins that refuse to run openHABian's SD-mirroring jobs unless
   the target is really the SanDisk card reader (guards against a `/dev/sda`↔`/dev/sdb`

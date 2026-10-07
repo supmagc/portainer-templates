@@ -2,7 +2,7 @@
 # Polls Traefik's own API for its current routers and writes Prometheus
 # file_sd JSON, so blackbox-exporter always probes whatever Traefik is
 # actually routing instead of a hand-maintained target list. Run every 15m
-# by the Dagu traefik-endpoints DAG. See docs/monitoring.md
+# by the Dagu traefik-endpoints DAG. See docs/endpoint-probes.md
 # "Traefik-endpoint discovery for blackbox".
 #
 # Deliberately stdlib-only (python:3-alpine has no curl/jq preinstalled).

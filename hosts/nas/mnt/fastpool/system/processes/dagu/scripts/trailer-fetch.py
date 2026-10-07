@@ -5,7 +5,7 @@ each item's trailers/ folder, with baked-in letterbox/pillarbox bars cropped out
 
 Trailer choice comes from TMDB's per-video language tags (Sonarr writes no trailer to
 its NFOs; Radarr's NFO <trailer> is just its API youTubeTrailerId, used here as the
-preferred pick when it's in the original language). See docs/monitoring.md.
+preferred pick when it's in the original language). See docs/dagu.md.
 
 Rules:
   * Up to MAX_TRAILERS per item, each written as `<Title (Year)> - <TMDB name> [<id>].mp4`
