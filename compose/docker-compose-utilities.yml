@@ -221,6 +221,7 @@ services:
       - TZ=${APP_TIMEZONE}
       - "WATCHTOWER_SCHEDULE=0 0 4 * * *"
       - "WATCHTOWER_CLEANUP=true"
+      - "WATCHTOWER_TIMEOUT=5m"
       - "WATCHTOWER_LABEL_ENABLE=true"
       - "WATCHTOWER_NOTIFICATION_URL=pushover://:${PUSHOVER_TOKEN}@${PUSHOVER_USER}/?"
 
@@ -256,11 +257,12 @@ services:
       - default
     pull_policy: missing
     restart: unless-stopped
+    stop_grace_period: 2m
     group_add:
       - "910"   # nas_multimedia
       - "930"   # nas_extras
     labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"   # update manually when idle; see docs/multimedia.md
       - "traefik.enable=true"
       - "traefik.http.middlewares.tdarr-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.routers.tdarr.rule=Host(`tdarr.${NETWORK_DOMAIN}`)"

@@ -58,6 +58,7 @@ steps:
 
   - id: generate
     depends: vendor
+    timeout_sec: 7200
     action: docker.run
     with:
       image: jrottenberg/ffmpeg:8.0-nvidia

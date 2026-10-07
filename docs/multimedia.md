@@ -153,3 +153,16 @@ downloads torrent content — so "disk usage" here means the `bitmagnet` Postgre
 not the media library. ~90% of that DB is per-torrent file-list rows, which is why the
 compose file caps `DHT_CRAWLER_SAVE_FILES_THRESHOLD` (default 100) rather than relying on
 classifier cleanup alone to control growth.
+
+## GPU container restarts (single Quadro P400)
+
+2026-10-07: Watchtower recreated Tdarr mid-NVENC-encode; the kill left the GPU/driver context
+wedged and every other GPU user (Dagu `trailer-fetch` / `backdrop-generate`) blocked inside the
+driver instead of failing. Mitigations: Tdarr is `watchtower.enable=false` (update manually when
+no workers are active) with `stop_grace_period: 2m`; the two Dagu GPU steps have
+`timeout_sec: 7200` so a hang becomes an alertable failure. Emby/Jellyfin also use the GPU and are
+still Watchtower-enabled — same risk if recreated during a transcode.
+
+If it recurs: `dmesg | grep -i xid`; if `nvidia-smi` hangs or processes sit in D state
+(`ps -eo pid,stat,cmd | awk '$2 ~ /^D/'`), only a host reboot recovers it. A timeout can't kill a
+D-state process, so it only guarantees the DAG run is marked failed.
