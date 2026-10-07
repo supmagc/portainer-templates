@@ -34,7 +34,7 @@ services:
     secrets:
       - mealie-postgres-password
     volumes:
-      - /mnt/fastpool/system/nextcloud/mealie:/app/data
+      - /mnt/fastpool/system/household/mealie:/app/data
     environment:
       - TZ=${APP_TIMEZONE}
       - PUID=${APP_USER}
@@ -79,7 +79,7 @@ services:
       - vikunja-postgres-password
       - vikunja-secret
     volumes:
-      - /mnt/fastpool/system/nextcloud/vikunja/files:/app/vikunja/files
+      - /mnt/fastpool/system/household/vikunja/files:/app/vikunja/files
     environment:
       - VIKUNJA_SERVICE_TIMEZONE=${APP_TIMEZONE}
       - VIKUNJA_SERVICE_PUBLICURL=https://vikunja.${NETWORK_DOMAIN}/

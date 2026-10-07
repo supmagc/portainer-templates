@@ -1,0 +1,28 @@
+http:
+  routers:
+    vikunja-public:
+      rule: "Host(`vikunja.bellecerise.be`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      service: vikunja-public
+
+    vikunja-public-redirect:
+      rule: "Host(`vikunja.bellecerise.be`)"
+      entryPoints:
+        - web
+      middlewares:
+        - vikunja-public-https
+      service: vikunja-public
+
+  middlewares:
+    vikunja-public-https:
+      redirectScheme:
+        scheme: https
+
+  services:
+    vikunja-public:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:3456"

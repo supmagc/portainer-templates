@@ -1,0 +1,28 @@
+http:
+  routers:
+    mealie-public:
+      rule: "Host(`mealie.bellecerise.be`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      service: mealie-public
+
+    mealie-public-redirect:
+      rule: "Host(`mealie.bellecerise.be`)"
+      entryPoints:
+        - web
+      middlewares:
+        - mealie-public-https
+      service: mealie-public
+
+  middlewares:
+    mealie-public-https:
+      redirectScheme:
+        scheme: https
+
+  services:
+    mealie-public:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:9925"

@@ -82,6 +82,8 @@ services:
       - "traefik.http.routers.dagu-secure.tls=true"
       - "traefik.http.routers.dagu-secure.tls.certresolver=stepca"
       - "traefik.http.services.dagu.loadbalancer.server.port=8080"
+    ports:
+      - ${NETWORK_INTERFACE}:9923:8080/tcp
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /mnt/fastpool/system/processes/dagu:/config

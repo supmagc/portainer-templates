@@ -40,7 +40,26 @@ consumer. Values come from Portainer's per-stack environment UI, not a committed
 | `compose/docker-compose-nextcloud.yml` | `nextcloud` | Nextcloud (+ cron/web/onlyoffice/rebuilder sidecars) and its dedicated MariaDB |
 | `compose/docker-compose-utilities.yml` | `utilities` | MariaDB, PostgreSQL, Redis, RabbitMQ, Watchtower, phpMyAdmin, Dagu, chromedp, dupeguru, tdarr |
 | `compose/docker-compose-syncthing.yml` | `syncthing` | Syncthing |
-| `compose/docker-compose-household.yml` | `household` | Mealie (recipes), Vikunja (tasks), both on the shared `utilities` Postgres. Data lives under `/mnt/fastpool/system/nextcloud/` as `nas_nextcloud`, ahead of an eventual merge into the `nextcloud` stack |
+| `compose/docker-compose-household.yml` | `household` | Mealie (recipes), Vikunja (tasks), both on the shared `utilities` Postgres. Data lives under `/mnt/fastpool/system/household/` as `nas_household` (970) |
+
+### NAS users and groups
+
+Each stack runs as its own `nas_*` role, set through `APP_USER`/`APP_GROUP` in the stack's
+Portainer environment. Roles don't share group membership, so a process running as one
+role can't `chown` to another without root.
+
+| Name | UID:GID | Used by |
+|---|---|---|
+| `nas_multimedia` | 910:910 | `multimedia` stack, media library files |
+| `nas_processes` | 920:920 | `utilities` stack, Dagu and other processes |
+| `nas_extras` | 930:930 | `extras` stack |
+| `nas_backup` | 940:940 | backups |
+| `nas_nextcloud` | 950:950 | `nextcloud` stack |
+| `nas_downloads` | 960:960 | `downloads` stack |
+| `nas_household` | 970:970 | `household` stack, data under `/mnt/fastpool/system/household/` |
+
+`nas_household` is deliberately separate from `nas_nextcloud`: the two stacks never share
+files, so each owns only its own directory.
 
 Alerting is **native Grafana alerting** (contact point + notification policy configured
 in the Grafana UI, alert *rules* provisioned as YAML) — there is no Alertmanager or
