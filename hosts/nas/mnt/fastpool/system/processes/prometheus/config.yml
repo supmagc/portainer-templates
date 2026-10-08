@@ -54,9 +54,10 @@ scrape_configs:
     scrape_interval: 60s
     static_configs: [{targets: ["nextcloud-exporter:9205"]}]   # VERIFY default port
 
-  - job_name: emby
-    scrape_interval: 60s
-    static_configs: [{targets: ["emby-exporter:9162"]}]
+  # Disabled while running Jellyfin; uncomment to re-enable
+#   - job_name: emby
+#     scrape_interval: 60s
+#     static_configs: [{targets: ["emby-exporter:9162"]}]
 
   - job_name: jellyfin
     scrape_interval: 60s
@@ -80,6 +81,7 @@ scrape_configs:
 
   - job_name: exportarr
     scrape_interval: 60s
+    scrape_timeout: 30s
     static_configs:
       - targets: ["exportarr-sonarr:8081"]
         labels: {app: sonarr}
@@ -98,7 +100,7 @@ scrape_configs:
     scrape_interval: 30s
     static_configs:
       - targets:
-          - http://emby:8096/emby/System/Info/Public
+          # - http://emby:8096/emby/System/Info/Public
           - http://jellyfin:8096/health
           - http://rabbitmq:15672/
           - http://seerr:5055/api/v1/status

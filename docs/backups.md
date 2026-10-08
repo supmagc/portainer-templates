@@ -192,6 +192,53 @@ Cross-cutting layers the rows below refer to:
 | Tdarr (`server`, `configs`, flows, custom plugins) | Library DB, flows, node config | Low–Medium | Copy `server`/`configs`; `temp`/`cache`/`logs` excluded; local flow plugins belong in git | **Gap** (low) |
 | dupeGuru, chromedp, phpMyAdmin, Watchtower, whoami | Stateless / trivial config | — | — | **N/A** |
 
+### Built-in backup mechanisms
+
+What each service can do on its own, to prefer over a raw file copy. Written from memory of
+each project, not checked against the pinned versions (all images are `:latest`) — verify
+the *unverified* entries before relying on them.
+
+#### Built-in, already mounted in compose
+
+| Service | Mechanism | Caveat |
+|---|---|---|
+| Sonarr, Radarr, Lidarr, Whisparr, Prowlarr | Scheduled zip of config DB and settings (System → Backup) | Default folder is under `/config`; the `/backup` mount only helps if the backup folder is pointed there or the files are copied out |
+| Bazarr | Scheduled backup of config and DB | Same folder question |
+| SABnzbd | Config backup via UI/API | Believed on-demand, not scheduled (unverified) — something must trigger it or `sabnzbd-backup-cleaner` has nothing to prune |
+| Jellyfin (10.11+) | Dashboard → Backups: config, DB, optionally metadata | Believed manual, not scheduled (unverified); mount targets its backup dir |
+| Stash | Settings → Tasks → Backup (DB, optionally blobs) | Manual or via a scheduled task |
+
+#### Built-in, not wired up yet
+
+| Service | Mechanism |
+|---|---|
+| Navidrome | Scheduled DB backup (`ND_BACKUP_PATH`, `ND_BACKUP_SCHEDULE`, `ND_BACKUP_COUNT`) — verify names |
+| Mealie | Admin → Backups: zip of DB and data, API-triggerable |
+| Vikunja | `vikunja dump` CLI (config, DB, files) |
+| Portainer | Settings → Backup (encrypted archive, API-triggerable; scheduling is Business Edition only) |
+| Tdarr | Automatic DB backups in `server/Backups`, restorable from the UI |
+| Emby | Plugin-based, not core — don't rely on it |
+
+#### Tool-level backups (not the app's own)
+
+| Service | Mechanism |
+|---|---|
+| openHAB | `openhab-cli backup` (already covered by Amanda) |
+| OpenWrt | `sysupgrade -b` / LuCI → Backup |
+| TrueNAS | System Settings → Save Config |
+| Fritzbox | System → Backup |
+| Prometheus | Snapshot API, if metrics history is ever wanted (currently treated as disposable) |
+| Grafana | No real native backup — copy `grafana.db` or export via API |
+| Postgres, MariaDB | `pg_dump` / `mariadb-dump` (done) |
+
+**No native mechanism — copy files:** Syncthing (keys, `config.xml`), Seerr, Organizr,
+step-ca, Nextcloud (needs maintenance mode + DB dump + data dir; no single command),
+qBittorrent, Traefik, BitMagnet, Dagu.
+
+The *arr/Bazarr/SABnzbd/Jellyfin/Stash rows above stay **Partial** until someone checks on
+the NAS that backups are actually being created on a schedule and landing in
+`rightpool/backup/automated/<app>` (`ls -lt` on those folders).
+
 ### Highest-value gaps, in order
 
 1. **Cloud Sync / snapshot scope** — confirm in the TrueNAS UI that `leftpool` (Nextcloud,

@@ -390,19 +390,20 @@ services:
       - NEXTCLOUD_SERVER=http://nextcloud-web
       - NEXTCLOUD_AUTH_TOKEN=${NEXTCLOUD_EXPORTER_TOKEN}
 
-  emby-exporter:
-    image: williamclot/emby_exporter:latest
-    container_name: emby-exporter
-    networks:
-      - default
-      - multimedia_default
-    pull_policy: missing
-    restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    command:
-      - "--emby.addr=http://emby:8096/emby"
-      - "--emby.token=${EMBY_API_KEY}"
+  # Disabled while running Jellyfin; uncomment to re-enable
+#   emby-exporter:
+#     image: williamclot/emby_exporter:latest
+#     container_name: emby-exporter
+#     networks:
+#       - default
+#       - multimedia_default
+#     pull_policy: missing
+#     restart: unless-stopped
+#     labels:
+#       - "com.centurylinklabs.watchtower.enable=true"
+#     command:
+#       - "--emby.addr=http://emby:8096/emby"
+#       - "--emby.token=${EMBY_API_KEY}"
 
   jellyfin-exporter:
     image: rebelcore/jellyfin-exporter:latest
