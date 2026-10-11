@@ -672,6 +672,50 @@ groups:
           summary: "Dagu DAG {{ $labels.dag }} failed"
           description: "{{ $labels.dag }} has {{ $values.B.Value }} failed run(s) today - check its history in the Dagu UI."
 
+      - uid: gpu-unavailable
+        title: GpuUnavailable
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: nvidia_smi_last_collect_success
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: critical
+        annotations:
+          summary: "NAS GPU is not responding to nvidia-smi"
+          description: "gpu-exporter is up but nvidia-smi has been failing for 5+ minutes - driver hang or GPU off the bus. NVENC users (Stash, Tdarr, Jellyfin, backdrop-generate) will fail; check `dmesg | grep -i nvrm` on the NAS, a reboot is usually required."
+
       - uid: cert-expiring-soon
         title: CertExpiringSoon
         condition: C
