@@ -85,7 +85,33 @@ deliberately after `themerr-fetch` (03:30) since both walk the same Radarr/Sonar
 libraries, and after most other NAS activity since it shares the P400 GPU with
 Tdarr/Emby/Jellyfin transcoding.
 
-**Source order: ThemerrDB video first, local montage as fallback.** ThemerrDB only stores
+**Source order: community network clip, then ThemerrDB video, then local montage.**
+Nothing this DAG downloads or generates is ever uploaded anywhere.
+
+*Community network clip (first).* The catalogue behind the paid Emby "Movie Theme Videos"
+/ "TV Theme Videos" plugins (decompiled from the DLLs). It is a private one-person
+backend: `GET {NETWORK_BASE}/movies.php` (keyed by **TMDB** id, ~8.2k entries) and
+`tv.php` (keyed by **TVDB** id, ~2.8k), sent with two static headers (`ApiKey`, `ApiUN`)
+that are a shared constant baked into every plugin install (the licence check is
+client-side only; overridable via `NETWORK_API_KEY`/`NETWORK_API_UN`). Each entry is
+`<id>mediafireKey</id>`. The key resolves via the MediaFire page
+(`mediafire.com/file/<key>`, first `https?://download…` link; the links are time-limited,
+so they are resolved right before downloading). The plugins' other endpoints are dead
+or useless: the main `tmdb3`/`tvdb3` indexes are 2017 stubs, `genlnk.php` returns an
+empty body, and the `*large.php` lists are placeholders. A download is rejected if it has
+no video stream or fails the same static-video check as ThemerrDB; the file is then
+remuxed to `theme.mp4` (video copied, since some clips are mkv) with the audio normalised
+to a −15 dB peak like the plugin did (`NORMALISE_AUDIO`, `NORMALISE_MAX_DB`; AAC
+re-encoding moves the final peak by about ±1 dB). It replaces any ThemerrDB/local file this
+tool wrote and is never downgraded; the entry records `mf_key`, so a changed index key
+re-downloads. Static/unusable keys go in `state.json`'s `rejected` as `network/<key>`
+(same retry rules as URLs); a throttle (HTML instead of video, 403/429/503) stops network
+downloads for the run. Throttled by `MAX_NETWORK_DOWNLOADS` (50) and `NETWORK_DELAY` (3s);
+`NETWORK_VIDEOS=false` turns it off. Series use Sonarr's `tvdbId`. The index is fetched
+once per run with a cached fallback in the data dir. Tested live against tmdb 100 (mp4)
+and tvdb 100341 (mkv) on 2026-10-11; the DAG itself is not deployed or run yet.
+
+*ThemerrDB.* ThemerrDB only stores
 a YouTube URL per item (`youtube_theme_url`), picked for its audio. Sometimes that
 video is the real opening sequence; often it's a still image with music. So each URL is
 downloaded (same link rules as `trailer-fetch`: public, not 18+, 20-300s; best ≤1080p
@@ -111,10 +137,10 @@ does. When there's no ThemerrDB URL, when it's rejected, or when the download bu
 spent, the item falls through to the local montage below. The budget case gets
 ThemerrDB tried again on a later run.
 
-Not used: Emby's paid Movie/TV Theme Video plugins and their "Theme Contributors
-Network" (a 2014 shared theme database). It has no public API, and joining it means
-auto-uploading local files to a third-party server. Those plugins write
-`backdrops/*.mkv`, which matches (unconfirmed) the pre-automation `.mkv` backdrops.
+Not used: the plugins' upload task ("Contributor Network"), which auto-uploads local theme
+videos to a MediaFire dropbox. Our self-generated montages are not good enough to
+contribute, so this DAG never uploads. Those plugins write `backdrops/*.mkv`, which
+matches (unconfirmed) the pre-automation `.mkv` backdrops.
 
 **Local montage fallback.** The two real precedents for this
 ([emby-theme-maker](https://github.com/Oratorian/emby-theme-maker),
@@ -164,7 +190,7 @@ through ~20 min per clip for 17+ hours.
 Ownership and the `.nobackdrop` skip file work exactly like `themerr-fetch`'s
 `theme.mp3`/`.nothemerr` (see [[project_nas_users_groups]] for the UID:GID table) -
 `chown_data_dir()` to `nas_processes`, each written backdrop `chown`'d to
-`nas_multimedia`. Each `owned` entry records its `source` (`themerr` with its `url`, or
+`nas_multimedia`. Each `owned` entry records its `source` (`network` with its `mf_key`, `themerr` with its `url`, or
 `local`; entries written before the ThemerrDB step existed have no `source` and count as
 `local`). A local montage is regenerated when the source file(s)' own size/mtime changes
 (e.g. a quality re-encode), via a `sources` fingerprint list recorded per folder.

@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
 backdrop-generate — build Emby/Jellyfin "theme videos" (backdrops/theme.mp4) for
-Radarr/Sonarr libraries. ThemerrDB's theme-song video is tried first; when it is a
-still image (or missing/unusable), a montage of short, cut-free, motion-containing
-clips is sampled directly out of the movie/episode files instead (see docs/dagu.md).
+Radarr/Sonarr libraries. Source order: the community theme-video index (the catalogue
+behind the Emby Movie/TV Theme Video plugins), then ThemerrDB's theme-song video, then a
+montage of short, cut-free, motion-containing clips sampled directly out of the
+movie/episode files (see docs/dagu.md). Nothing is ever uploaded.
 
 Rules:
   * A file in backdrops/ that this tool did not write is treated as user-provided
     and never touched.
   * A folder containing a `.nobackdrop` file is skipped entirely.
-  * A ThemerrDB URL that turns out static is remembered and never downloaded again;
-    a new URL for the same item is tried on a later run and replaces a local montage.
+  * A community video replaces anything this tool wrote itself and is never downgraded.
+  * A ThemerrDB/community URL that turns out static is remembered and never downloaded
+    again; a new ThemerrDB URL for the same item is tried on a later run and replaces a
+    local montage.
   * A local montage is regenerated only if its source file(s) changed (size/mtime).
   * Movies sample from the one file. Series sample from SERIES_EPISODES
     representative episodes spread across the show, skipping the pilot.
@@ -18,6 +21,7 @@ Rules:
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -93,6 +97,16 @@ STATIC_GAP = env_num("STATIC_GAP", 1.0)                    # seconds between the
 STATIC_THRESHOLD = env_num("STATIC_THRESHOLD", 2.0)        # mean pixel-diff counted as motion
 STATIC_MIN_MOVING_PCT = env_num("STATIC_MIN_MOVING_PCT", 50)  # below this share of points = static
 
+NETWORK_VIDEOS = env_bool("NETWORK_VIDEOS", True)          # false = skip the community theme-video index
+NETWORK_BASE = env("NETWORK_BASE", "http://www.ballingtons.com/s/mf").rstrip("/")
+NETWORK_API_KEY = env("NETWORK_API_KEY", "SPEBGSPSEP2KA4D2NTSB")  # shared constant from the Emby plugin
+NETWORK_API_UN = env("NETWORK_API_UN", "MBJBAPI")
+MAX_NETWORK_DOWNLOADS = int(env_num("MAX_NETWORK_DOWNLOADS", 50))  # MediaFire downloads per run, 0 = unlimited
+NETWORK_DELAY = env_num("NETWORK_DELAY", 3)
+NETWORK_MAX_MB = env_num("NETWORK_MAX_MB", 300)
+NORMALISE_AUDIO = env_bool("NORMALISE_AUDIO", True)
+NORMALISE_MAX_DB = env_num("NORMALISE_MAX_DB", -15)        # target peak, like the Emby plugin
+
 NVENC_PRESET = env("NVENC_PRESET", "p4")
 NVENC_CQ = env("NVENC_CQ", "23")
 GPU_PROBE_TIMEOUT = env_num("GPU_PROBE_TIMEOUT", 60)       # seconds; a wedged driver hangs, not errors
@@ -144,10 +158,10 @@ def load_state() -> dict:
         s = json.loads(STATE_FILE.read_text())
     except FileNotFoundError:
         s = {}
-    # folder -> {source: local|themerr, sources: [{path,size,mtime}] | url, size, mtime, written}
+    # folder -> {source: local|themerr|network, sources: [{path,size,mtime}] | url | mf_key, size, mtime, written}
     s.setdefault("owned", {})
     s.setdefault("missing", {})   # ThemerrDB key -> iso timestamp of last negative lookup
-    s.setdefault("rejected", {})  # YouTube URL -> {reason, checked, static}
+    s.setdefault("rejected", {})  # YouTube URL or "network/<mediafire key>" -> {reason, checked, static}
     return s
 
 
@@ -204,6 +218,7 @@ def arr_items() -> list[dict]:
                 "title": f"{m.get('title')} ({m.get('year')})",
                 "folder": map_path(m["path"]),
                 "ids": [("movies/themoviedb", m.get("tmdbId")), ("movies/imdb", m.get("imdbId"))],
+                "net_id": str(m.get("tmdbId") or ""),
                 "videos": [map_path(m["movieFile"]["path"])],
             })
         log.info("Radarr: %d movies with files", len(items))
@@ -221,6 +236,7 @@ def arr_items() -> list[dict]:
                 "title": f"{s.get('title')} ({s.get('year')})",
                 "folder": map_path(s["path"]),
                 "ids": [("tv_shows/themoviedb", s.get("tmdbId"))],  # ThemerrDB indexes TV by TMDb only
+                "net_id": str(s.get("tvdbId") or ""),               # the network indexes TV by TVDB
                 "videos": videos,
             })
             n_series += 1
@@ -558,6 +574,140 @@ def fetch_themerr(url: str, dest: Path) -> tuple[str, str]:
         return "ok", ""
 
 
+# --------------------------------------------------------------------------- community network
+
+NET_ENTRY_RE = re.compile(r"<(-?\d+)>([A-Za-z0-9]+)</\1>")
+NET_URL_RE = re.compile(r"https?://download[^\"'\s<>]+", re.I)
+CHROME_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+             "(KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
+
+
+def load_network_index(kind: str) -> dict[str, str]:
+    """TMDB id (movie) / TVDB id (series) -> MediaFire key, from the Emby theme-video
+    plugins' community index. Falls back to the last good copy when the fetch fails."""
+    name = "movies.php" if kind == "movie" else "tv.php"
+    cache = DATA_DIR / f"network-index-{kind}.json"
+    req = urllib.request.Request(f"{NETWORK_BASE}/{name}", headers={
+        "User-Agent": UA, "ApiKey": NETWORK_API_KEY, "ApiUN": NETWORK_API_UN})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            body = r.read().decode("utf-8", errors="replace")
+        index = {i: k for i, k in NET_ENTRY_RE.findall(body) if k.lower() != "false" and int(i) > 0}
+        if index:
+            cache.write_text(json.dumps(index))
+            return index
+        log.warning("Network index %s came back empty", name)
+    except (urllib.error.URLError, TimeoutError) as e:
+        log.warning("Network index %s: %s", name, e)
+    try:
+        index = json.loads(cache.read_text())
+        log.warning("Using cached network index for %ss (%d entries)", kind, len(index))
+        return index
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def resolve_network(key: str) -> tuple[str, str]:
+    """MediaFire key -> direct download URL. ("ok", url) or (status, reason)."""
+    req = urllib.request.Request(f"https://www.mediafire.com/file/{key}", headers={"User-Agent": CHROME_UA})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            page = r.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429, 503):
+            return "ratelimited", f"MediaFire page HTTP {e.code}"
+        return ("unusable" if e.code == 404 else "error"), f"MediaFire page HTTP {e.code}"
+    except (urllib.error.URLError, TimeoutError) as e:
+        return "error", f"MediaFire page: {e}"
+    urls = [html.unescape(u) for u in NET_URL_RE.findall(page)]
+    url = next((u for u in urls if f"/{key}/" in u), urls[0] if urls else None)
+    return ("ok", url) if url else ("unusable", "no download link on the MediaFire page")
+
+
+def download_network(url: str, dest: Path) -> tuple[str, str]:
+    req = urllib.request.Request(url, headers={"User-Agent": CHROME_UA})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            if "text/html" in r.headers.get("Content-Type", "").lower():
+                return "ratelimited", "got an HTML page instead of a video (server load limit?)"
+            size = int(r.headers.get("Content-Length") or 0)
+            if size > NETWORK_MAX_MB * 1024 * 1024:
+                return "unusable", f"{size / 1024 / 1024:.0f} MB exceeds NETWORK_MAX_MB"
+            with open(dest, "wb") as f:
+                shutil.copyfileobj(r, f)
+    except urllib.error.HTTPError as e:
+        return ("ratelimited" if e.code in (403, 429, 503) else "error"), f"download HTTP {e.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return "error", f"download: {e}"
+    return "ok", ""
+
+
+def stream_codec(path: Path, select: str) -> str:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", select, "-show_entries",
+                        "stream=codec_name", "-of", "csv=p=0", str(path)],
+                       capture_output=True, text=True, errors="replace")
+    return r.stdout.strip().splitlines()[0] if r.stdout.strip() else ""
+
+
+def remux_network(src: Path, out: Path) -> str:
+    """Remux to mp4 (video copied), normalising the audio peak to NORMALISE_MAX_DB like the
+    Emby plugin did. "" on success, else the error."""
+    base = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+            "-map", "0:v:0", "-map", "0:a:0?", "-map_metadata", "-1", "-sn", "-c:v", "copy"]
+    if stream_codec(src, "v:0") in ("hevc", "h265"):
+        base += ["-tag:v", "hvc1"]
+    audio = ["-c:a", "copy"]
+    if stream_codec(src, "a:0"):
+        audio = ["-c:a", "aac", "-ac", "2", "-ar", "44100", "-b:a", "128k"]
+        if NORMALISE_AUDIO:
+            r = subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-i", str(src), "-t", "60",
+                                "-vn", "-af", "volumedetect", "-f", "null", "-"],
+                               capture_output=True, text=True, errors="replace")
+            m = re.search(r"max_volume:\s*(-?[\d.]+) dB", r.stderr)
+            if m:
+                audio += ["-af", f"volume={NORMALISE_MAX_DB - float(m.group(1)):.1f}dB"]
+            else:
+                log.warning("  volumedetect found no audio level, leaving the volume as is")
+    tail = ["-movflags", "+faststart", str(out)]
+    # copying the source audio into mp4 can fail (e.g. mkv/opus): retry once as aac
+    for a in ([audio] if audio[1] == "aac" else [audio, ["-c:a", "aac", "-ac", "2", "-b:a", "128k"]]):
+        r = subprocess.run(base + a + tail, capture_output=True, text=True, errors="replace")
+        if r.returncode == 0 and out.exists():
+            return ""
+    return r.stderr.strip()[-300:]
+
+
+def fetch_network(key: str, dest: Path) -> tuple[str, str]:
+    """Resolve, download, validate (video stream, not a still image), remux/normalise and
+    atomically write `dest`. ("ok", "") or (static | unusable | ratelimited | error, reason)."""
+    status, url = resolve_network(key)
+    if status != "ok":
+        return status, url
+    with tempfile.TemporaryDirectory(dir=DATA_DIR) as tmp_s:
+        tmp = Path(tmp_s)
+        src = tmp / "src"
+        status, reason = download_network(url, src)
+        if status != "ok":
+            return status, reason
+        if not stream_codec(src, "v:0"):
+            return "unusable", "downloaded file has no video stream"
+        duration = probe_duration(src)
+        if duration <= STATIC_GAP:
+            return "unusable", "unreadable or too short"
+        static = is_static_video(src, duration)
+        if static is None:
+            return "error", "too few frames decoded for the motion check"
+        if static:
+            return "static", "no motion (still image)"
+        out = tmp / "out.mp4"
+        if err := remux_network(src, out):
+            return "error", f"remux failed: {err}"
+        staging = dest.with_name(f".{dest.name}.partial")
+        shutil.copyfile(out, staging)
+        staging.replace(dest)
+        return "ok", ""
+
+
 # --------------------------------------------------------------------------- media server
 
 def refresh_library() -> None:
@@ -598,9 +748,10 @@ def needs_regen(owned: dict | None, current: list[dict]) -> bool:
 
 
 class Downloads:
-    """Per-run YouTube budget: MAX_DOWNLOADS, DOWNLOAD_DELAY, and a stop on rate limiting."""
+    """Per-run download budget for one remote: a cap, a delay, and a stop on rate limiting."""
 
-    def __init__(self):
+    def __init__(self, label: str, limit: int, delay: float):
+        self.label, self.limit, self.delay = label, limit, delay
         self.count = 0
         self.stopped = False
         self.budget_warned = False
@@ -608,16 +759,16 @@ class Downloads:
     def available(self) -> bool:
         if self.stopped:
             return False
-        if MAX_DOWNLOADS and self.count >= MAX_DOWNLOADS:
+        if self.limit and self.count >= self.limit:
             if not self.budget_warned:
-                log.info("MAX_DOWNLOADS reached, skipping further ThemerrDB downloads this run")
+                log.info("Download budget reached, skipping further %s downloads this run", self.label)
                 self.budget_warned = True
             return False
         return True
 
     def start(self) -> None:
         if self.count:
-            time.sleep(DOWNLOAD_DELAY)
+            time.sleep(self.delay)
         self.count += 1
 
 
@@ -642,6 +793,27 @@ def try_themerr(item: dict, url: str, dest: Path, state: dict, dl: Downloads) ->
     return status
 
 
+def try_network(item: dict, key: str, dest: Path, state: dict, dl: Downloads) -> str:
+    """fetch_network()'s status ("ok" = `dest` now holds the community video). Static and
+    unusable are recorded in state["rejected"]; anything else is retried next run."""
+    log.info("Trying community video: %s -> mediafire %s", item["title"], key)
+    if DRY_RUN:
+        return "dry-run"
+    dl.start()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    status, reason = fetch_network(key, dest)
+    if status in ("static", "unusable"):
+        log.info("  rejected (%s): %s", status, reason)
+        state["rejected"][f"network/{key}"] = {"reason": reason, "checked": now().isoformat(),
+                                               "static": status == "static"}
+    elif status == "ratelimited":
+        log.error("Community host is throttling, stopping network downloads for this run: %s", reason)
+        dl.stopped = True
+    elif status != "ok":
+        log.error("  community download failed: %s", reason)
+    return status
+
+
 def record_owned(state: dict, key: str, dest: Path, **extra) -> None:
     os.chown(dest, MEDIA_UID, MEDIA_GID)
     st = dest.stat()
@@ -659,11 +831,14 @@ def run_once() -> dict:
     state = load_state()
 
     items = arr_items()
-    stats = dict(added=0, updated=0, themerr=0, rejected=0, user=0, skipped=0,
+    stats = dict(added=0, updated=0, network=0, themerr=0, rejected=0, user=0, skipped=0,
                  nosource=0, failed=0, nofolder=0)
     processed = 0
     budget_warned = False
-    dl = Downloads()
+    dl = Downloads("ThemerrDB", MAX_DOWNLOADS, DOWNLOAD_DELAY)
+    net = Downloads("community", MAX_NETWORK_DOWNLOADS, NETWORK_DELAY)
+    net_index = ({k: load_network_index(k) for k in {i["kind"] for i in items}}
+                 if NETWORK_VIDEOS else {})
 
     for item in items:
         folder: Path = item["folder"]
@@ -690,6 +865,19 @@ def run_once() -> dict:
 
         have_ours = owned is not None and dest.exists()
         source = owned.get("source", "local") if have_ours else None
+
+        net_key = net_index.get(item["kind"], {}).get(item["net_id"])
+        if (net_key and not (source == "network" and owned.get("mf_key") == net_key)
+                and not is_rejected(f"network/{net_key}", state) and net.available()):
+            status = try_network(item, net_key, dest, state, net)
+            if status == "ok":
+                record_owned(state, key, dest, source="network", mf_key=net_key)
+                stats["updated" if have_ours else "added"] += 1
+                stats["network"] += 1
+                continue
+            stats["rejected"] += status in ("static", "unusable")
+        if source == "network":
+            continue  # a community video beats everything else
 
         url = lookup_theme(item, state) if THEMERR_VIDEOS else None
         if (url and not (source == "themerr" and owned.get("url") == url)
