@@ -385,7 +385,7 @@ def pick_window(path: Path, target: float, lo: float, hi: float) -> float | None
 
 
 def extract_clip(path: Path, start: float, out: Path) -> bool:
-    vf = f"scale=-2:min({BACKDROP_MAX_HEIGHT}\\,ih)"
+    vf = f"scale=-2:min({BACKDROP_MAX_HEIGHT}\\,ih),format=yuv420p"  # Pascal NVENC can't encode 10-bit
     cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-hwaccel", "cuda",
            "-ss", str(start), "-i", str(path), "-t", str(SAMPLE_DURATION), "-an",
            "-vf", vf, "-c:v", "h264_nvenc", "-preset", NVENC_PRESET, "-rc", "vbr",
@@ -811,6 +811,8 @@ def try_network(item: dict, key: str, dest: Path, state: dict, dl: Downloads) ->
         dl.stopped = True
     elif status != "ok":
         log.error("  community download failed: %s", reason)
+    else:
+        log.info("  community video saved")
     return status
 
 
