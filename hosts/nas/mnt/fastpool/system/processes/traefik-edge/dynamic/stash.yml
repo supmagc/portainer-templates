@@ -1,0 +1,28 @@
+http:
+  routers:
+    stash-public:
+      rule: "Host(`stash.bellecerise.be`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      service: stash-public
+
+    stash-public-redirect:
+      rule: "Host(`stash.bellecerise.be`)"
+      entryPoints:
+        - web
+      middlewares:
+        - stash-public-https
+      service: stash-public
+
+  middlewares:
+    stash-public-https:
+      redirectScheme:
+        scheme: https
+
+  services:
+    stash-public:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:9999"

@@ -1,0 +1,66 @@
+name: Library Organizer
+description: Keeps each library's videos, NFOs, posters and fanart named, filed (studio folders) and described from Stash data. See docs/stash.md.
+version: 0.1.0
+exec:
+  - python
+  - "{pluginDir}/library_organizer.py"
+interface: raw
+
+settings:
+  dry_run:
+    displayName: Dry run
+    description: "Only report planned changes (Stash log and the report file). Default is ON."
+    type: BOOLEAN
+  dry_run_report_path:
+    displayName: Report file
+    description: "Optional file the report is written to, e.g. /config/plugins/library-organizer/report.txt. The dry-run task defaults to /config/library-organizer-dry-run-report.txt."
+    type: STRING
+  organized_only:
+    displayName: Only organized scenes
+    description: "Only touch scenes flagged Organized in Stash (hooks, reconcile and dry run). Default is ON."
+    type: BOOLEAN
+  enable_hook:
+    displayName: Run on scene/studio/performer updates
+    description: "Process affected scenes automatically after edits. Default is ON (still honours Dry run)."
+    type: BOOLEAN
+  library_filter:
+    displayName: Library filter
+    description: "Comma-separated library names (from libraries.yaml) the tasks and hooks are limited to. Empty = all."
+    type: STRING
+  orphan_action:
+    displayName: Orphan action
+    description: "quarantine (default, moved to <base>/.orphans/) or delete."
+    type: STRING
+  orphan_min_age_days:
+    displayName: Orphan minimum age (days)
+    description: "Ignore sidecars newer than this. Default 1."
+    type: NUMBER
+
+hooks:
+  - name: scene
+    description: Re-file/rename/describe a scene after it is created or edited.
+    triggeredBy:
+      - Scene.Create.Post
+      - Scene.Update.Post
+  - name: studio
+    description: Re-process a studio's scenes after the studio is edited.
+    triggeredBy:
+      - Studio.Update.Post
+  - name: performer
+    description: Re-process a performer's scenes after the performer is edited.
+    triggeredBy:
+      - Performer.Update.Post
+
+tasks:
+  - name: "Dry run: all libraries"
+    description: Always dry. Plans every scene in every library plus orphan sidecars and writes the report file.
+    defaultArgs:
+      mode: dry_run_all
+  - name: "Reconcile all libraries"
+    description: Apply the plan to every scene (honours the Dry run setting).
+    defaultArgs:
+      mode: reconcile_all
+  - name: "Clean orphaned sidecars"
+    description: Quarantine/delete NFOs and images whose video is gone (honours the Dry run setting).
+    defaultArgs:
+      mode: clean_orphans

@@ -21,6 +21,10 @@ area — it'll save you from re-discovering things the hard way.
   bring-up chain, and the openHABian Caddy reverse proxy plus its step-ca / acme.sh cert.
 - **[backups.md](backups.md)** — the openHABian Amanda dual-storage backup (local SSD +
   NFS→NAS→Backblaze), its phased bring-up, and the SD-card mirroring guard rails.
+- **[nas-storage.md](nas-storage.md)** — which ZFS pool owns which data, cross-pool
+  replicas, snapshot/B2 policy and the migration steps (2026-10-08 target layout).
+- **[photos.md](photos.md)** — Immich plan: external library over the Lightroom/digiKam
+  originals, phone uploads, and the rules that keep the old tools working.
 - **[multimedia.md](multimedia.md)** — the *arr / Emby / Jellyfin / download stacks, and
   Seerr's Jellyfin link and how the Jellyfin home-screen plugins match Seerr users.
 - **[multimedia-monitoring.md](multimedia-monitoring.md)** — exporter quirks for the media
@@ -29,6 +33,8 @@ area — it'll save you from re-discovering things the hard way.
   grows.
 - **[gpu.md](gpu.md)** — the single shared NVENC GPU and the Watchtower/Tdarr restart
   incident.
+- **[stash.md](stash.md)** — the custom `library-organizer` Stash plugin (naming, studio
+  folders, NFO/poster/fanart, Whisparr rescan, dry-run/reconcile/orphan tasks, rollout).
 - **[multimedia-library-layout.md](multimedia-library-layout.md)** — the canonical on-disk
   layout for the movies/series/music libraries (verified against Emby/Jellyfin naming) and
   the cleanup categories the `library-cleanup` Dagu DAG scans for.

@@ -1,0 +1,31 @@
+base_path: /data
+poster_crop_x: 0.5   # 0 = left, 1 = right edge of the screenshot for the 2:3 poster crop
+
+whisparr:
+  enabled: false
+  version: 2
+  url: http://whisparr:6969
+  api_key: "{{WHISPARR_API_KEY}}"
+
+libraries:
+  - name: Named
+    path: Named
+    studio_folders: true
+    studio_mode: follow
+    whisparr: true
+  - name: Unnamed
+    path: Unnamed
+    studio_folders: true
+    studio_mode: fixed
+    studios:
+    - GoddessAlexandraSnow: Goddess Alexandra Snow
+    - HotKinkyJo: Hot Kinky Jo
+    - LadyPerse: Lady Perse
+    - PalaceOfSin: Palace of Sin
+    - TriciaFox: Tricia Fox
+  - name: Tubes
+    path: Tubes
+    studio_folders: true
+    studio_mode: fixed
+    studios: 
+    - HypnoTube: HypnoTube
