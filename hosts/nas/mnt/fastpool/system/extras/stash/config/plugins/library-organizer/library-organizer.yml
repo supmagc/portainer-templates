@@ -1,5 +1,5 @@
 name: Library Organizer
-description: Keeps each library's videos, NFOs, posters and fanart named, filed (studio folders) and described from Stash data. See docs/stash.md.
+description: Keeps each library's videos, NFOs, posters and fanart named, filed (studio folders) and described from Stash data. See docs/extras.md.
 version: 0.1.0
 exec:
   - python

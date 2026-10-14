@@ -183,7 +183,7 @@
         { "expr": "max by (indexer) (prowlarr_indexer_unavailable)", "instant": true, "format": "table", "refId": "F" }
       ] },
 
-    { "id": 105, "type": "row", "title": "Emby", "gridPos": { "x": 0, "y": 42, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 105, "type": "row", "title": "Emby", "gridPos": { "x": 0, "y": 42, "w": 24, "h": 1 }, "collapsed": true, "panels": [
     { "id": 29, "title": "Active Streams", "type": "stat", "gridPos": { "x": 0, "y": 43, "w": 4, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
@@ -236,7 +236,8 @@
       "targets": [
         { "expr": "emby_stream_count", "legendFormat": "Active Streams", "refId": "A" },
         { "expr": "emby_transcoding_count", "legendFormat": "Transcoding", "refId": "B" }
-      ] },
+      ] }
+    ] },
 
     { "id": 112, "type": "row", "title": "Jellyfin", "gridPos": { "x": 0, "y": 51, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
     { "id": 113, "title": "Active Streams", "type": "stat", "gridPos": { "x": 0, "y": 52, "w": 4, "h": 4 },

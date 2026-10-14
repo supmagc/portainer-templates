@@ -1,3 +1,13 @@
 openhabian  /boot                         comp-user-tar
 openhabian  /etc                          comp-user-tar
 openhabian  /var/lib/openhab              comp-user-tar
+openhabian  /home/openhabian              comp-user-tar-home
+openhabian  /usr/local                    comp-user-tar
+openhabian  /var/backups                  comp-user-tar
+
+# Uncomment once installed - a missing path makes the nightly amdump report a failure.
+# VERIFY the zigbee2mqtt path against the actual install.
+#openhabian  /var/spool/cron               comp-user-tar
+#openhabian  /var/lib/mosquitto            comp-user-tar
+#openhabian  /var/lib/samba                comp-user-tar
+#openhabian  /opt/zigbee2mqtt/data         comp-user-tar

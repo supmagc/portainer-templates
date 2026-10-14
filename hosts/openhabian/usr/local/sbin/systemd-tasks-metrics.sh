@@ -2,7 +2,8 @@
 # /usr/local/sbin/systemd-tasks-metrics.sh
 #
 # Exposes all of openHABian's systemd-timer-driven jobs - the Amanda backups
-# (amdump-openhab-dir, amandaBackupDB), the Caddy cert renewal (acme-renew),
+# (amdump-openhab-dir, amandaBackupDB), the data exports (pi-data-backup), the
+# Caddy cert renewal (acme-renew),
 # and the SD-card-mirroring jobs (sdrawcopy, sdrsync) - as the shared
 # `scheduled_job_*` textfile-collector family every scheduled-job source in
 # this repo writes into - see docs/monitoring.md "Scheduled jobs (unified)"
@@ -44,7 +45,7 @@ OUT_FILE="${OUT_DIR}/systemd_tasks.prom"
 TMP_FILE="${OUT_FILE}.tmp"
 SOURCE_TIMER="openhabian-timer"
 
-TIMER_UNITS="amdump-openhab-dir amandaBackupDB acme-renew sdrawcopy sdrsync"
+TIMER_UNITS="amdump-openhab-dir amandaBackupDB pi-data-backup@influxdb pi-data-backup@grafana pi-data-backup@persistence acme-renew sdrawcopy sdrsync"
 
 mkdir -p "$OUT_DIR"
 

@@ -87,8 +87,15 @@ shortened to fit the 200-char path cap, studio/date prefixes added to HypnoTube/
 
 ## Gotchas
 
-- Stash runs as root, the library is `1001:930` mode `775`: the plugin copies owner/mode from the
-  parent for every directory/file it creates. Don't create paths with Stash's own mkdir.
+- The Stash server runs as uid/gid 930 (`nas_extras`) with **no supplementary groups**; the library is
+  `1001:930` mode `775`. ZFS NFSv4 group ACL entries only match supplementary groups, so folders owned
+  by other users were not writable until an ACL user entry for 930 (full control, inherit, recursive)
+  was added on `leftpool/extras`. Test as that user with `os.setgroups([]); os.setgid(930); os.setuid(930)`
+  inside the container, not `docker exec -u 930:930` (that adds the group and hides the problem).
+  The plugin copies owner/mode from the parent for every directory/file it creates. Don't create
+  paths with Stash's own mkdir.
+- The quality tag is rounded to a standard height (`768p`→`720p`, `406p`→`360p`); change
+  `naming.quality_token` and re-run if exact heights are wanted.
 - Stash's `moveFiles` requires the destination to be inside a library path, and
   `destination_basename` works for a single file only → multi-file scenes are skipped (`SKIP … files in one scene`).
 - Scenes without a title keep their file name (NFO title falls back to the file name).
@@ -101,12 +108,15 @@ shortened to fit the 200-char path cap, studio/date prefixes added to HypnoTube/
   only fixes in-folder renames). v3 (`RescanMovie`) is untested — `VERIFY` in `lo/whisparr.py`.
 - Whisparr's Kodi/Emby metadata (episode `.nfo` only, no images) can overwrite our NFO on its own
   events; the next hook or reconcile converts it back.
-- Untested against a live move: `moveFiles` has not been exercised by the plugin on real files
-  (unit tests use a fake Stash); the dry-run planner is verified against the live instance.
+- Verified live (2026-10-11): single scenes, then the whole `Tubes` library (102 scenes, 0 errors,
+  re-dry-run clean). Not yet run for real: studio create/delete in a `fixed` library, Whisparr rescan,
+  orphan quarantine / **Clean orphaned sidecars**.
 
 ## Tests
 
 `tests/` (unittest, no extra deps). Run inside the stash container, e.g. copy the plugin dir to
 `/tmp/lo-test` there and `python3 -m unittest discover -s tests`. For a live planner check:
-`STASH_API_KEY=… python3 library_organizer.py --standalone --url http://localhost:9999 --mode dry_run_all --report /tmp/r.txt`
-(`--live` really changes files; `--scene ID` processes one scene).
+`docker exec -u 930:930 -e STASH_API_KEY=… stash python3 /config/plugins/library-organizer/library_organizer.py --standalone --mode dry_run_all|reconcile_all --libraries Named --report /tmp/r.txt`
+(`--live` really changes files; `--scene ID` processes one scene). Run as 930, never root; read the
+summary on the report's last line rather than the Stash log; take the key from `.tokens`
+(`STASH_API_KEY`) and keep it out of shell history.

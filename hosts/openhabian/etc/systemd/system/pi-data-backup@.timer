@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly export of %i data to the NAS
+
+[Timer]
+OnCalendar=*-*-* 03:30
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

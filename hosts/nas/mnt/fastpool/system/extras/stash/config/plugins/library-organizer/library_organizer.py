@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stash raw plugin: keeps video/NFO/poster/fanart named, filed and described per library.
 
-See docs/stash.md. Run by Stash as a hook/task; `--standalone` is for manual testing.
+See docs/extras.md. Run by Stash as a hook/task; `--standalone` is for manual testing.
 """
 import argparse
 import json

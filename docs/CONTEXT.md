@@ -33,7 +33,7 @@ area — it'll save you from re-discovering things the hard way.
   grows.
 - **[gpu.md](gpu.md)** — the single shared NVENC GPU and the Watchtower/Tdarr restart
   incident.
-- **[stash.md](stash.md)** — the custom `library-organizer` Stash plugin (naming, studio
+- **[extras.md](extras.md)** — the custom `library-organizer` Stash plugin (naming, studio
   folders, NFO/poster/fanart, Whisparr rescan, dry-run/reconcile/orphan tasks, rollout).
 - **[multimedia-library-layout.md](multimedia-library-layout.md)** — the canonical on-disk
   layout for the movies/series/music libraries (verified against Emby/Jellyfin naming) and

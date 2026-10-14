@@ -34,7 +34,10 @@ sets `holdingdisk no` — the multi-storage double-write and graceful NAS-down d
 both need one. If the NAS is down the SSD write still succeeds and the dump waits in
 holding for a later `amflush`.
 
-The `disklist` covers `/boot`, `/etc`, and `/var/lib/openhab`, all as `comp-user-tar`
+The `disklist` covers `/boot`, `/etc`, `/var/lib/openhab`, `/home/openhabian`, `/usr/local`
+and `/var/backups` (dpkg state), all as `comp-user-tar`; Mosquitto, Samba, zigbee2mqtt and
+cron are present but commented out until installed, because a missing path fails the
+nightly dump. Node-RED's data is under `/home/openhabian`. All entries
 (client-side fast compression, `amgtar` with openHABian's exclude list). One full dump per
 7 days spread over 7 daily runs; one vtape slot = 5 GB (a run fits in one).
 
@@ -63,6 +66,33 @@ firing (or a manual `sudo -u backup amdump openhab-dir`) picks up the change and
 autolabels the `nas-openhab-*` vtapes on first use.
 
 Restores default to the fast local copy (`amrecover_changer "ch_ssd"`).
+
+## Data exports to the NAS
+
+`pi-data-backup@.{service,timer}` is a systemd template: one instance per dataset
+(`pi-data-backup@influxdb`, `@grafana`, `@persistence`), each running
+`/usr/local/sbin/pi-data-backup.sh <name>` nightly at 03:30 (+15m jitter) so each is
+monitored and re-runnable on its own. They write dated exports to the NAS mount, keeping
+the newest 14 of each:
+
+- `/mnt/backup/influxdb/<date>/` — `influx backup` (InfluxDB 2.x, whole instance)
+- `/mnt/backup/grafana/<date>/grafana.db.gz` — `sqlite3 .backup`, safe while Grafana runs
+- `/mnt/backup/persistence/<date>/persistence.tar.gz`
+
+It refuses to run if `/mnt/backup` isn't a mounted filesystem (so it can't fill the SD card)
+and publishes a dated dir only after its export succeeds, so a failed night never replaces
+or prunes a good one. A failed export fails only its own unit; all three are watched like
+the other timers through `systemd-tasks-metrics.sh`.
+
+Setup on the Pi: create `/etc/default/pi-data-backup` (root, mode 600) with `INFLUX_TOKEN=`
+and optionally `INFLUX_HOST=`; install `sqlite3`; `chmod +x` the script; then
+`systemctl enable --now pi-data-backup@{influxdb,grafana,persistence}.timer`.
+Amanda's `disklist` doesn't cover any of this.
+
+**Influx damage (2026-10-13):** the SSD has unreadable sectors and many Influx shards are
+unreadable, so `influx backup` is expected to fail until the data is on a healthy disk.
+An emergency raw copy lives in `/mnt/backup/emergency/` (from `rsync -a`; files that hit
+read errors were discarded by rsync, not kept truncated).
 
 ## SD-card mirroring guard rails
 
@@ -129,8 +159,9 @@ Cross-cutting layers the rows below refer to:
 | `/etc`, `/boot`, `/var/lib/openhab` | openHAB conf, items/things (JSONDB), HabApp, Caddy, systemd units | Critical | Amanda `amdump` nightly (above) | **Done** on the local SSD (14 days); **Partial** — the NAS/B2 leg (90 days) is inactive until the NFS mount works |
 | Amanda catalog | Index needed to `amrecover` | High | `amandaBackupDB` timer | **Done** (unit tracked) |
 | Boot SD card | Whole OS image | Medium | `sdrawcopy` (every 2 months) + `sdrsync` to the spare card | **Done**, guarded; same room as the Pi, no offsite |
-| InfluxDB 1.x (`/var/lib/influxdb`) | openHAB persistence history | Medium | `influxd backup -portable` on a timer to the SSD/NAS (don't tar the live DB: inconsistent) | **Gap** — not in the Amanda `disklist` |
-| Pi-bundled Grafana (`/var/lib/grafana`) | Local dashboards, Loki datasource | Low | Add to `disklist`, or recreate | **Gap** (low) |
+| InfluxDB **2.x** (`/mnt/ssd/influxdb`) | openHAB persistence history | Medium | `influx backup` to the NAS via `pi-data-backup` (don't tar the live DB: inconsistent) | **Partial** — script written, not deployed; the SSD copy has unreadable shards (see below) |
+| Pi-bundled Grafana (`/mnt/ssd/grafana`) | Local dashboards, Loki datasource | Low | `sqlite3 .backup` of `grafana.db` via `pi-data-backup` | **Partial** — written, not deployed |
+| openHAB persistence (`/mnt/ssd/persistence`) | rrd4j/MapDB; `/var/lib/openhab/persistence` is a symlink to it, so Amanda's tar skips it | Medium | tar via `pi-data-backup` | **Partial** — written, not deployed |
 | Pi Loki data, journal | Logs | — | Disposable; central Loki gets a copy | **N/A** |
 | Caddy cert (`~/.acme.sh`) | step-ca-issued cert | Low | Re-issued by `acme-renew` | **N/A** |
 | Tracked config (units, Caddyfile, Promtail, Amanda conf) | — | — | Git + `deploy.ps1` | **Done** |

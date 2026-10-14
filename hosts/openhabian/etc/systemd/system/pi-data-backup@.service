@@ -1,0 +1,11 @@
+[Unit]
+Description=Export %i data to the NAS
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/backup
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/pi-data-backup
+ExecStart=/usr/local/sbin/pi-data-backup.sh %i
+TimeoutStartSec=2h
