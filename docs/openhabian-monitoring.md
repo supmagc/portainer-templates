@@ -139,7 +139,6 @@ Note: Promtail is deprecated upstream (folded into Grafana Alloy, removed from L
 3.7.3). The standalone binary still works and matches the NAS stack's `grafana/promtail`
 — an eventual Alloy migration is the long-term path for both hosts.
 
-
 ## Pi storage health (SSD SMART, SD cards)
 
 - **SSD:** `smartctl_exporter` runs natively on the Pi (`smartctl_exporter.service`, root, `:9633`,
@@ -154,4 +153,11 @@ Note: Promtail is deprecated upstream (folded into Grafana Alloy, removed from L
   `blk_update_request`, forced read-only remounts in the last 10m). ext4's "last error at" /
   "initial error at" lines print at every mount and are deliberately not matched. The mirror card
   in the USB reader (`/dev/sdbackup`) is covered by the `sdrawcopy`/`sdrsync` scheduled-job alerts.
+- **Write load (2026-10-14).** The SSD was taking ~178 GB/day, almost all from openHAB's own MapDB
+  persistence (`everyUpdate`; fixed in the openHAB config, which is outside this repo). The boot SD card
+  takes a steady ~70 KB/s (~6 GB/day), mostly the Pi-local Loki (`/var/lib/loki` is on the card), so
+  its WAL is disabled in `loki/config.yml`: a crash loses the last few minutes of the Pi's local logs,
+  the copy shipped to the NAS is unaffected. Compare `rate(node_disk_written_bytes_total{device="mmcblk0"})`
+  and the dashboard's "Written (24h)" panel before/after. Moving Loki to the SSD is not worth it while
+  the SSD has bad sectors.
 - The `EXT4-fs error (device sdb1)` lines from 2026-10-13 (the damaged SSD) match `PiStorageIoErrors`.

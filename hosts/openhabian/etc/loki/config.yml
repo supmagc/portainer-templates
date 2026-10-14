@@ -17,6 +17,11 @@ common:
     kvstore:
       store: inmemory
 
+# VERIFY: run `loki -config.file=/etc/loki/config.yml -verify-config` after deploying
+ingester:
+  wal:
+    enabled: false
+
 schema_config:
   configs:
     - from: 2020-10-24
