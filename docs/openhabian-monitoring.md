@@ -139,3 +139,19 @@ Note: Promtail is deprecated upstream (folded into Grafana Alloy, removed from L
 3.7.3). The standalone binary still works and matches the NAS stack's `grafana/promtail`
 — an eventual Alloy migration is the long-term path for both hosts.
 
+
+## Pi storage health (SSD SMART, SD cards)
+
+- **SSD:** `smartctl_exporter` runs natively on the Pi (`smartctl_exporter.service`, root, `:9633`,
+  scrapes only `/dev/ssd;sat`, the stable name from `99-usb-drives.rules`). Its target is part of the
+  existing `smartctl` Prometheus job, so `DiskSmartFailure` and `DiskTemperatureHigh` cover it with no
+  rule change. Install: `smartmontools` package plus the `linux-armv7`/`linux-arm64` release binary of
+  `prometheus-community/smartctl_exporter` (v0.15.0 ships both) in `/usr/local/bin`; check
+  `smartctl -a /dev/ssd` and drop `;sat` if the bridge doesn't need it.
+- **SD cards expose no SMART.** The running card (`mmcblk0`, SanDisk `SN32G`) has no `life_time` /
+  `pre_eol_info` either, so there is no wear percentage. Failure is caught indirectly:
+  `PiStorageIoErrors` (Loki: kernel `mmcblk0` errors, `EXT4-fs error`, `Buffer I/O error`,
+  `blk_update_request`, forced read-only remounts in the last 10m). ext4's "last error at" /
+  "initial error at" lines print at every mount and are deliberately not matched. The mirror card
+  in the USB reader (`/dev/sdbackup`) is covered by the `sdrawcopy`/`sdrsync` scheduled-job alerts.
+- The `EXT4-fs error (device sdb1)` lines from 2026-10-13 (the damaged SSD) match `PiStorageIoErrors`.

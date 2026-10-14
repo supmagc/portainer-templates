@@ -241,7 +241,7 @@ scrape_configs:
 
   - job_name: smartctl
     scrape_interval: 5m
-    static_configs: [{targets: ["smartctl-exporter:9633"]}]
+    static_configs: [{targets: ["smartctl-exporter:9633", "openhabian.bellecerise.local:9633"]}]
 
   - job_name: gpu
     scrape_interval: 30s

@@ -1,0 +1,13 @@
+[Unit]
+Description=Prometheus smartctl Exporter (Transcend SSD)
+After=network.target
+
+[Service]
+# VERIFY: the ;sat suffix is needed if smartctl -a /dev/ssd fails without -d sat (USB-SATA bridge)
+ExecStart=/usr/local/bin/smartctl_exporter "--smartctl.device=/dev/ssd;sat" --smartctl.interval=5m
+Restart=on-failure
+# root: smartctl needs raw device access
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -449,6 +449,94 @@ groups:
           summary: "{{ $labels.device }} running hot ({{ $values.B.Value }}°C)"
           description: "Disk {{ $labels.device }} on {{ $labels.instance }} has been above 55°C for 10+ minutes. Check airflow/dust."
 
+      - uid: disk-bad-sectors
+        title: DiskBadSectors
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: smartctl_device_attribute{attribute_value_type="raw", attribute_id=~"5|197|198"}
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.device }} on {{ $labels.instance }}: {{ $labels.attribute_name }} = {{ $values.B.Value }}"
+          description: "SMART attribute {{ $labels.attribute_name }} (raw) is non-zero on {{ $labels.device }} ({{ $labels.instance }}). The overall SMART status can still read PASSED while a drive loses sectors. Back it up and plan a replacement."
+
+      - uid: pi-storage-io-errors
+        title: PiStorageIoErrors
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: loki
+            model:
+              datasource: {type: loki, uid: loki}
+              expr: sum(count_over_time({host="openhabian", job="journal"} |~ "(?i)mmcblk0.*(error|timeout)|EXT4-fs error|Buffer I/O error|blk_update_request|Remounting filesystem read-only" [10m])) or vector(0)
+              queryType: instant
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Storage I/O errors in openhabian's journal ({{ $values.B.Value }} in 10m)"
+          description: "The Pi's kernel logged SD card/SSD I/O or filesystem errors in the last 10 minutes. Query {host=\"openhabian\", job=\"journal\"} in Loki for the lines. The 'last error at'/'initial error at' lines ext4 prints at every mount are deliberately not matched."
+
       - uid: pool-degraded
         title: PoolDegraded
         condition: C
