@@ -13,6 +13,6 @@
 SUBSYSTEM=="block", KERNEL=="sd[a-z]",     ENV{ID_SERIAL}=="SanDisk_SDDR-B531_1128240000005943-0:0", SYMLINK+="sdbackup"
 SUBSYSTEM=="block", KERNEL=="sd[a-z][0-9]", ENV{ID_SERIAL}=="SanDisk_SDDR-B531_1128240000005943-0:0", SYMLINK+="sdbackup%n"
 
-# Transcend TS250GMTS425S 250 GB SSD - must never be a mirror target (mounted at /mnt/ssd)
-SUBSYSTEM=="block", KERNEL=="sd[a-z]",     ENV{ID_SERIAL}=="TS250GMTS425S_I964670181", SYMLINK+="ssd"
-SUBSYSTEM=="block", KERNEL=="sd[a-z][0-9]", ENV{ID_SERIAL}=="TS250GMTS425S_I964670181", SYMLINK+="ssd%n"
+# Transcend TS240GMTS420S 240 GB SSD - must never be a mirror target (mounted at /mnt/ssd)
+SUBSYSTEM=="block", KERNEL=="sd[a-z]",     ENV{ID_SERIAL}=="TS240GMTS420S_K101750523", SYMLINK+="ssd"
+SUBSYSTEM=="block", KERNEL=="sd[a-z][0-9]", ENV{ID_SERIAL}=="TS240GMTS420S_K101750523", SYMLINK+="ssd%n"

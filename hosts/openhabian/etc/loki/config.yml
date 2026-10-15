@@ -7,11 +7,11 @@ server:
 
 common:
   instance_addr: 127.0.0.1
-  path_prefix: /var/lib/loki
+  path_prefix: /mnt/ssd/loki
   storage:
     filesystem:
-      chunks_directory: /var/lib/loki/chunks
-      rules_directory: /var/lib/loki/rules
+      chunks_directory: /mnt/ssd/loki/chunks
+      rules_directory: /mnt/ssd/loki/rules
   replication_factor: 1
   ring:
     kvstore:
@@ -40,7 +40,7 @@ limits_config:
   ingestion_burst_size_mb: 16
 
 compactor:
-  working_directory: /var/lib/loki/compactor
+  working_directory: /mnt/ssd/loki/compactor
   retention_enabled: true
   delete_request_store: filesystem
 

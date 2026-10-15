@@ -1,6 +1,7 @@
 [Unit]
 Description=Loki
 After=network-online.target
+RequiresMountsFor=/mnt/ssd
 Wants=network-online.target
 
 [Service]
@@ -12,7 +13,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/var/lib/loki
+ReadWritePaths=/mnt/ssd/loki
 
 [Install]
 WantedBy=multi-user.target

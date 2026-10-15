@@ -38,11 +38,11 @@ EXPECT_SERIAL="1128240000005943"
 EXPECT_MODEL="SDDR-B531"
 EXPECT_BYID="/dev/disk/by-id/usb-SanDisk_SDDR-B531_1128240000005943-0:0"
 
-# --- things the target must never be: the Transcend 250 GB SSD ---------------
-SSD_SERIAL="I964670181"
-SSD_MODEL="TS250GMTS425S"
+# --- things the target must never be: the Transcend 240 GB SSD -----------------
+SSD_SERIAL="K101750523"
+SSD_MODEL="TS240GMTS420S"
 
-# --- size ceiling: the mirror card is ~30 GB, the SSD is ~233 GB ------------
+# --- size ceiling: the mirror card is ~30 GB, the SSD is ~224 GB ------------
 MAX_BYTES=$((64 * 1000 * 1000 * 1000))
 
 fail() { echo "sdmirror-guard: ABORT - $*" >&2; exit 1; }
