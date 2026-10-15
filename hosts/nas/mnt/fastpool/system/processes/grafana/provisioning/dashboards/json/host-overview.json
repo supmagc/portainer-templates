@@ -110,6 +110,50 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 5,
+      "title": "Disk Read",
+      "description": "Physical disks only (nvme/sd/mmcblk, partitions excluded). OpenWrt exposes no disk metrics.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "fillOpacity": 10, "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(node_disk_read_bytes_total{instance=~\"$instance\", device=~\"nvme[0-9]+n[0-9]+|sd[a-z]+|mmcblk[0-9]+\"}[$__rate_interval])",
+          "legendFormat": "{{instance}} - {{device}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Disk Write",
+      "description": "Physical disks only (nvme/sd/mmcblk, partitions excluded). OpenWrt exposes no disk metrics.",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "fillOpacity": 10, "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(node_disk_written_bytes_total{instance=~\"$instance\", device=~\"nvme[0-9]+n[0-9]+|sd[a-z]+|mmcblk[0-9]+\"}[$__rate_interval])",
+          "legendFormat": "{{instance}} - {{device}}",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

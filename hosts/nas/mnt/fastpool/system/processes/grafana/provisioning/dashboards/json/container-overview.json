@@ -281,13 +281,32 @@
       ]
     },
     {
+      "id": 40,
+      "title": "ZFS Dataset Write Rate",
+      "description": "Top 8 datasets by write rate. Parent datasets include their children (fastpool/system/processes covers every app config/database), so rows overlap. Per-container disk I/O is not shown: cAdvisor reads 0 for containers on ZFS, so this is the closest per-workload write signal.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "Bps", "custom": { "fillOpacity": 10, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "topk(8, sum by (dataset) (rate(node_zfs_zpool_dataset_nwritten{job=\"node\"}[$__rate_interval])))",
+          "legendFormat": "{{dataset}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
       "id": 1,
       "type": "row",
       "title": "$container",
       "collapsed": true,
       "repeat": "container",
       "repeatDirection": "v",
-      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 29, "w": 24, "h": 1 },
       "panels": [
         {
           "id": 2,
