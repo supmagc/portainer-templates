@@ -1,0 +1,41 @@
+apiVersion: 1
+
+# Critical -> pushover-critical (priority 1, bypasses Pushover quiet hours), immediate.
+# Warning  -> pushover-digest (priority -1, silent), one grouped push in the 08:00-09:00 window.
+# Anything else falls through to the root (pushover-alerts, priority 0).
+policies:
+  - orgId: 1
+    receiver: pushover-alerts
+    group_by: ["alertname"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      - receiver: pushover-critical
+        object_matchers:
+          - ["severity", "=", "critical"]
+        group_by: ["alertname"]
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 2h
+      - receiver: pushover-digest
+        object_matchers:
+          - ["severity", "=", "warning"]
+        group_by: ["severity"]
+        group_wait: 30s
+        group_interval: 30m
+        # 23h, not 24h: the digest flush must be due again before the next day's window opens.
+        repeat_interval: 23h
+        mute_time_intervals:
+          - outside-digest-window
+
+muteTimes:
+  - orgId: 1
+    name: outside-digest-window
+    time_intervals:
+      - times:
+          - start_time: "00:00"
+            end_time: "08:00"
+          - start_time: "09:00"
+            end_time: "24:00"
+        location: "Europe/Brussels"

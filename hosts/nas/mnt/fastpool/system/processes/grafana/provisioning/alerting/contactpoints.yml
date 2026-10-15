@@ -1,0 +1,46 @@
+apiVersion: 1
+
+# Tokens are filled in from .tokens by scripts/deploy.ps1 (see .tokens.example).
+# Pushover priority is fixed per contact point, hence one per severity tier (see policies.yml).
+contactPoints:
+  - orgId: 1
+    name: pushover-alerts
+    receivers:
+      - uid: pushover-alerts-receiver
+        type: pushover
+        settings:
+          apiToken: "{{PUSHOVER_GRAFANA_API_TOKEN}}"
+          userKey: "{{PUSHOVER_USER_KEY}}"
+          priority: "0"
+          message: |
+            {{ len .Alerts.Firing }} firing, {{ len .Alerts.Resolved }} resolved
+            {{ range .Alerts }}{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} {{ .Labels.alertname }}: {{ .Annotations.summary }}
+            {{ end }}
+
+  - orgId: 1
+    name: pushover-critical
+    receivers:
+      - uid: pushover-critical-receiver
+        type: pushover
+        settings:
+          apiToken: "{{PUSHOVER_GRAFANA_API_TOKEN}}"
+          userKey: "{{PUSHOVER_USER_KEY}}"
+          priority: "1"
+          message: |
+            {{ len .Alerts.Firing }} firing, {{ len .Alerts.Resolved }} resolved
+            {{ range .Alerts }}{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} {{ .Labels.alertname }}: {{ .Annotations.summary }}
+            {{ end }}
+
+  - orgId: 1
+    name: pushover-digest
+    receivers:
+      - uid: pushover-digest-receiver
+        type: pushover
+        settings:
+          apiToken: "{{PUSHOVER_GRAFANA_API_TOKEN}}"
+          userKey: "{{PUSHOVER_USER_KEY}}"
+          priority: "-1"
+          message: |
+            {{ len .Alerts.Firing }} firing, {{ len .Alerts.Resolved }} resolved
+            {{ range .Alerts }}{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} {{ .Labels.alertname }}: {{ .Annotations.summary }}
+            {{ end }}

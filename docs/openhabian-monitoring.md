@@ -161,3 +161,14 @@ Note: Promtail is deprecated upstream (folded into Grafana Alloy, removed from L
   and the dashboard's "Written (24h)" panel before/after. Moving Loki to the SSD is not worth it while
   the SSD has bad sectors.
 - The `EXT4-fs error (device sdb1)` lines from 2026-10-13 (the damaged SSD) match `PiStorageIoErrors`.
+- **SMART and write alerting (2026-10-15).** Why `DiskBadSectorsGrowing` watches the 7-day *growth* of
+  reallocated/pending/uncorrectable sectors (>9) instead of "non-zero": the NAS's `sda` has sat at 112
+  reallocated sectors for 30+ days and TrueNAS doesn't flag it, while the Pi SSD went 59→90 reallocated in
+  3.5h before its exporter died. `DiskBadSectorsHigh` (>500 absolute) is the backstop. The SMART rules
+  join `smartctl_device` for `model_name`/`serial_number` and derive a `host` label (`nas`/`openhabian`)
+  from `instance`, since `/dev/sdX` names move. `DiskWriteSustainedHigh` is absolute (Pi: >500 KB/s over
+  6h) because the SSD's constant ~2 MB/s for a week would never look "abnormal" against its own baseline;
+  `DiskWriteSpike` is relative (NAS NVMe: 1h rate >3x the 7d average, 2 MB/s floor). cAdvisor's
+  `container_fs_*` / `container_blkio_*` read 0 for containers on ZFS, so per-container write attribution
+  doesn't exist; `node_zfs_zpool_dataset_nwritten` (per dataset) is the closest signal. A dead drive can
+  also show as `rate(node_disk_io_time_seconds_total)` ≈ 1 with near-zero throughput (Pi `sdb`, 2026-10-15).

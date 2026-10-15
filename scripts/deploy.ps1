@@ -9,9 +9,9 @@
   mapping from local path to remote path - no per-file config needed.
 
   Only commit files under hosts\ that are safe to have in git history - no
-  tokens, passwords, or other secrets, and nothing under manual/UI control
-  elsewhere (e.g. Grafana's contactpoints.yml/policies.yml stay host-only,
-  see scratchpad\host-configs\ instead).
+  tokens, passwords, or other secrets (use {{TOKEN_NAME}} placeholders filled
+  from .tokens instead, e.g. Grafana's contactpoints.yml), and nothing under
+  manual/UI control elsewhere.
 
   Hosts are discovered from ~\.ssh\config (Host entries, wildcards excluded) -
   add one there before it'll show up here, e.g.:

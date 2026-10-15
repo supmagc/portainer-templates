@@ -26,9 +26,21 @@ scrape/storage/query only; `compose/docker-compose-monitoring.yml` has no `alert
 `apprise` service, and shouldn't gain one without a real reason to revisit that decision.
 
 Grafana alert rules are provisioned as YAML
-(`hosts/nas/.../grafana/provisioning/alerting/rules.yml`); the contact point and
-notification policy are **not** provisioned as files — they're set by hand in the Grafana
-UI and hold a real Pushover token, which is exactly why they stay out of git.
+(`hosts/nas/.../grafana/provisioning/alerting/rules.yml`), as are the contact points
+(`contactpoints.yml`) and notification policy (`policies.yml`) in the same directory. The
+Pushover token and user key are `{{PUSHOVER_GRAFANA_API_TOKEN}}` / `{{PUSHOVER_USER_KEY}}`
+placeholders in `contactpoints.yml`, filled in from `.tokens` by `scripts/deploy.ps1`.
+
+**Routing by severity (2026-10-15).** `severity=critical` → `pushover-critical` (Pushover priority 1,
+bypasses the phone's quiet hours), grouped per alert, repeat 2h. `severity=warning` → `pushover-digest`
+(priority -1, silent), one grouped push per day: the route is muted by the `outside-digest-window`
+mute timing except 08:00–09:00 Europe/Brussels, with a 23h repeat so the flush is due again before the
+next window. Everything else falls through to the root `pushover-alerts` (priority 0). Pushover priority
+is a fixed per-contact-point setting (not templatable), hence one contact point per tier. Grafana has no
+inhibit rules, so one root cause (a dead drive) still fires several rules; keep `for:` generous on
+downstream ones. Early-warning rules are trend-based (`DiskFillingUp`, `PoolFillingUp` project days
+until full; SMART/write rules in docs/openhabian-monitoring.md); the static 5% / 95% rules stay as critical
+backstops. No ZFS checksum/scrub-error metric exists in Prometheus, so that check isn't covered yet.
 
 ## Grafana provisioning "locked" gotcha
 

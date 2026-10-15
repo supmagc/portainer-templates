@@ -139,18 +139,21 @@ groups:
           description: "Container {{ $labels.name }} (image {{ $labels.image }}) has had a failing Docker healthcheck for 10+ minutes — cAdvisor reports container_health_state=0 (unhealthy, or stuck in 'starting'). It won't necessarily restart on its own, so ContainerCrashLooping won't catch it — check the container's healthcheck and logs."
 
       - uid: disk-space-low
-        title: DiskSpaceLow
+        title: DiskFillingUp
         condition: C
-        for: 10m
+        for: 1h
         noDataState: OK
         execErrState: Error
         data:
           - refId: A
-            relativeTimeRange: {from: 600, to: 0}
+            relativeTimeRange: {from: 86400, to: 0}
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|zfs"}) * 100
+              # Days until full at the 24h fill rate (huge when not shrinking); min by device collapses bind mounts of one filesystem.
+              expr: >-
+                min by (instance, device) (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|zfs|nfs.*|vfat"}
+                / clamp_min(-deriv(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|zfs|nfs.*|vfat"}[24h]), 1)) / 86400
               instant: true
               refId: A
           - refId: B
@@ -171,7 +174,7 @@ groups:
               expression: B
               refId: C
               conditions:
-                - evaluator: {type: lt, params: [15]}
+                - evaluator: {type: lt, params: [7]}
                   operator: {type: and}
                   query: {params: [C]}
                   reducer: {type: last}
@@ -179,8 +182,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Low disk space on {{ $labels.mountpoint }}"
-          description: "{{ $labels.mountpoint }} on {{ $labels.instance }} has only {{ $values.B.Value }}% free space left."
+          summary: "{{ $labels.device }} on {{ $labels.instance }} full in {{ humanize $values.B.Value }} days"
+          description: "At the last 24h's fill rate {{ $labels.device }} on {{ $labels.instance }} runs out of space in {{ humanize $values.B.Value }} days. DiskSpaceCritical (under 5% free) is the backstop."
 
       - uid: disk-space-critical
         title: DiskSpaceCritical
@@ -274,18 +277,19 @@ groups:
           description: "Blackbox probe against {{ $labels.instance }} (job={{ $labels.job }}) has been failing for 3+ minutes (tls-cert jobs: 2+ consecutive 5-minute probes)."
 
       - uid: pool-space-low
-        title: PoolSpaceLow
+        title: PoolFillingUp
         condition: C
-        for: 10m
+        for: 1h
         noDataState: OK
         execErrState: Error
         data:
           - refId: A
-            relativeTimeRange: {from: 600, to: 0}
+            relativeTimeRange: {from: 1209600, to: 0}
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: zpool_capacity_percent
+              # Days until the pool reaches 90% at the 14d fill rate (huge when not growing; negative once already past 90%).
+              expr: (90 - zpool_capacity_percent) / clamp_min(deriv(zpool_capacity_percent[14d]), 1e-12) / 86400
               instant: true
               refId: A
           - refId: B
@@ -306,7 +310,7 @@ groups:
               expression: B
               refId: C
               conditions:
-                - evaluator: {type: gt, params: [85]}
+                - evaluator: {type: lt, params: [30]}
                   operator: {type: and}
                   query: {params: [C]}
                   reducer: {type: last}
@@ -314,8 +318,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Pool {{ $labels.pool }} is {{ $values.B.Value }}% full"
-          description: "ZFS pool {{ $labels.pool }} has been above 85% capacity for 10+ minutes."
+          summary: "Pool {{ $labels.pool }} reaches 90% in {{ humanize $values.B.Value }} days"
+          description: "At its 14-day growth rate ZFS pool {{ $labels.pool }} reaches 90% capacity in {{ humanize $values.B.Value }} days (negative = already past it). PoolSpaceCritical (over 95%) is the backstop."
 
       - uid: pool-space-critical
         title: PoolSpaceCritical
@@ -373,7 +377,10 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: smartctl_device_smart_status
+              expr: >-
+                label_replace(label_replace(
+                smartctl_device_smart_status * on (instance, device) group_left (model_name, serial_number) max by (instance, device, model_name, serial_number) (smartctl_device),
+                "host", "nas", "instance", "smartctl-exporter.*"), "host", "openhabian", "instance", "openhabian.*")
               instant: true
               refId: A
           - refId: B
@@ -402,8 +409,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "SMART failure on {{ $labels.device }}"
-          description: "Disk {{ $labels.device }} on {{ $labels.instance }} is reporting a failed SMART overall-health status. Back it up / replace it."
+          summary: "SMART failure on {{ $labels.host }}/{{ $labels.device }} ({{ $labels.model_name }})"
+          description: "{{ $labels.host }}/{{ $labels.device }} ({{ $labels.model_name }}, S/N {{ $labels.serial_number }}) is reporting a failed SMART overall-health status. Back it up / replace it."
 
       - uid: disk-temperature-high
         title: DiskTemperatureHigh
@@ -417,7 +424,10 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: smartctl_device_temperature{temperature_type="current"}
+              expr: >-
+                label_replace(label_replace(
+                smartctl_device_temperature{temperature_type="current"} * on (instance, device) group_left (model_name, serial_number) max by (instance, device, model_name, serial_number) (smartctl_device),
+                "host", "nas", "instance", "smartctl-exporter.*"), "host", "openhabian", "instance", "openhabian.*")
               instant: true
               refId: A
           - refId: B
@@ -446,11 +456,60 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.device }} running hot ({{ $values.B.Value }}°C)"
-          description: "Disk {{ $labels.device }} on {{ $labels.instance }} has been above 55°C for 10+ minutes. Check airflow/dust."
+          summary: "{{ $labels.host }}/{{ $labels.device }} running hot ({{ $values.B.Value }}°C)"
+          description: "{{ $labels.host }}/{{ $labels.device }} ({{ $labels.model_name }}, S/N {{ $labels.serial_number }}) has been above 55°C for 10+ minutes. Check airflow/dust."
 
       - uid: disk-bad-sectors
-        title: DiskBadSectors
+        title: DiskBadSectorsGrowing
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 604800, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: >-
+                label_replace(label_replace(
+                max by (instance, device, attribute_name) (max_over_time(smartctl_device_attribute{attribute_value_type="raw", attribute_id=~"5|197|198"}[7d]) - min_over_time(smartctl_device_attribute{attribute_value_type="raw", attribute_id=~"5|197|198"}[7d]))
+                * on (instance, device) group_left (model_name, serial_number) max by (instance, device, model_name, serial_number) (smartctl_device),
+                "host", "nas", "instance", "smartctl-exporter.*"), "host", "openhabian", "instance", "openhabian.*")
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                # Growth over 7d, not the absolute count: a stable count (NAS sda: 112 for 30d+) stays quiet. Adjust 9 to tune.
+                - evaluator: {type: gt, params: [9]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.host }}/{{ $labels.device }} ({{ $labels.model_name }}): {{ $labels.attribute_name }} grew by {{ $values.B.Value }} in 7d"
+          description: "{{ $labels.host }}/{{ $labels.device }} ({{ $labels.model_name }}, S/N {{ $labels.serial_number }}): SMART attribute {{ $labels.attribute_name }} (raw) rose by {{ $values.B.Value }} over the last 7 days - the drive is actively losing sectors. Current value: NAS Overview 'SMART Status & Error Counts' (nas) or Home Automation 'SSD Bad Sectors' (openhabian). Back it up and plan a replacement."
+
+      - uid: disk-bad-sectors-high
+        title: DiskBadSectorsHigh
         condition: C
         for: 0m
         noDataState: OK
@@ -461,7 +520,241 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: {type: prometheus, uid: prometheus}
-              expr: smartctl_device_attribute{attribute_value_type="raw", attribute_id=~"5|197|198"}
+              expr: >-
+                label_replace(label_replace(
+                max by (instance, device, attribute_name) (smartctl_device_attribute{attribute_value_type="raw", attribute_id=~"5|197|198"})
+                * on (instance, device) group_left (model_name, serial_number) max by (instance, device, model_name, serial_number) (smartctl_device),
+                "host", "nas", "instance", "smartctl-exporter.*"), "host", "openhabian", "instance", "openhabian.*")
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                # Absolute backstop for a drive that is already bad (the NAS's 112 is below it). Adjust 500 to tune.
+                - evaluator: {type: gt, params: [500]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.host }}/{{ $labels.device }} ({{ $labels.model_name }}): {{ $labels.attribute_name }} = {{ $values.B.Value }}"
+          description: "{{ $labels.host }}/{{ $labels.device }} ({{ $labels.model_name }}, S/N {{ $labels.serial_number }}) has {{ $values.B.Value }} raw {{ $labels.attribute_name }} - far past what a healthy drive shows, even if SMART still reads PASSED. Replace it."
+
+      - uid: disk-write-sustained-high
+        title: DiskWriteSustainedHigh
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 21600, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: rate(node_disk_written_bytes_total{job="openhabian", device=~"mmcblk0|sd[a-z]"}[6h])
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                # Bytes/s over 6h. Pi baseline: SD ~70 KB/s, SSD was ~2 MB/s (~175 GB/day) before it died. Adjust 500000 (~43 GB/day) to tune.
+                - evaluator: {type: gt, params: [500000]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "openhabian {{ $labels.device }} writing {{ humanize1024 $values.B.Value }}B/s (6h avg)"
+          description: "openhabian {{ $labels.device }} has averaged {{ humanize1024 $values.B.Value }}B/s of writes over 6h - sustained writes wear out SD cards and SSDs. Find the writer (persistence strategy, logging, database) - see docs/openhabian-monitoring.md."
+
+      - uid: disk-write-spike
+        title: DiskWriteSpike
+        condition: C
+        for: 30m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 604800, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              # Ratio of the 1h write rate to the 7d average, floored at 2 MB/s so idle devices can't spike; NVMe only (HDD writes are bursty by nature).
+              expr: >-
+                rate(node_disk_written_bytes_total{job="node", device=~"nvme[0-9]n1"}[1h])
+                / clamp_min(avg_over_time(rate(node_disk_written_bytes_total{job="node", device=~"nvme[0-9]n1"}[1h])[7d:1h]), 2e6)
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [3]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "NAS {{ $labels.device }} writing {{ humanize $values.B.Value }}x its 7-day average"
+          description: "NAS {{ $labels.device }} has written at {{ humanize $values.B.Value }}x its 7-day average rate for 30+ minutes. See NAS Overview 'ZFS Dataset Write Rate' for which dataset is responsible."
+
+      - uid: disk-stalled
+        title: DiskStalled
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              # Busy fraction, but only while throughput is under 100 KB/s: a hung/dying drive is "busy" without moving data. Healthy disks read 0.
+              expr: >-
+                rate(node_disk_io_time_seconds_total{device=~"mmcblk0|sd[a-z]|nvme[0-9]n[0-9]"}[10m])
+                * ((rate(node_disk_read_bytes_total{device=~"mmcblk0|sd[a-z]|nvme[0-9]n[0-9]"}[10m])
+                + rate(node_disk_written_bytes_total{device=~"mmcblk0|sd[a-z]|nvme[0-9]n[0-9]"}[10m])) < bool 1e5)
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [0.9]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.device }} on {{ $labels.instance }} is busy but moving no data"
+          description: "{{ $labels.device }} on {{ $labels.instance }} has been >90% busy with under 100 KB/s of throughput for 10+ minutes - the signature of a hung or dying drive (the Pi SSD looked like this when it died). Check dmesg and SMART."
+
+      - uid: cpu-iowait-high
+        title: CpuIowaitHigh
+        condition: C
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: 100 * avg by (instance) (rate(node_cpu_seconds_total{job=~"node|openhabian", mode="iowait"}[15m]))
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                # Baseline: Pi 5-11% (SD card), NAS under 7%. Adjust 25 to tune.
+                - evaluator: {type: gt, params: [25]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} waiting on disk {{ humanize $values.B.Value }}% of CPU time"
+          description: "iowait on {{ $labels.instance }} has averaged {{ humanize $values.B.Value }}% for 15+ minutes - processes are blocked on a slow or failing disk. Compare per-device throughput and busy time on Host Overview / DiskStalled."
+
+      - uid: oom-kill
+        title: OomKill
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              expr: increase(node_vmstat_oom_kill{job=~"node|openhabian"}[15m])
               instant: true
               refId: A
           - refId: B
@@ -490,8 +783,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.device }} on {{ $labels.instance }}: {{ $labels.attribute_name }} = {{ $values.B.Value }}"
-          description: "SMART attribute {{ $labels.attribute_name }} (raw) is non-zero on {{ $labels.device }} ({{ $labels.instance }}). The overall SMART status can still read PASSED while a drive loses sectors. Back it up and plan a replacement."
+          summary: "{{ $labels.instance }}: {{ humanize $values.B.Value }} process(es) OOM-killed in 15m"
+          description: "The kernel on {{ $labels.instance }} killed {{ humanize $values.B.Value }} process(es) for memory in the last 15 minutes. On the NAS, container_oom_events_total (Container Overview / NAS Overview 'OOM Kills') shows which container."
 
       - uid: pi-storage-io-errors
         title: PiStorageIoErrors
