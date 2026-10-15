@@ -161,11 +161,17 @@ if ($DeployPath) {
 
 # --- pick file ---
 if (-not $DeployPath) {
-    $files = @(
+    $fileInfos = @(
         Get-ChildItem -Path $hostDir -Recurse -File |
-            ForEach-Object { $_.FullName.Substring($hostDir.Length + 1) -replace '\\', '/' } |
-            Sort-Object
+            ForEach-Object {
+                [pscustomobject]@{
+                    Path     = $_.FullName.Substring($hostDir.Length + 1) -replace '\\', '/'
+                    Modified = $_.LastWriteTime
+                }
+            } |
+            Sort-Object Path
     )
+    $files = @($fileInfos | ForEach-Object { $_.Path })
     $lastPathProp = "lastPath_$DeployHost"
     $lastPath = $state.$lastPathProp
 
@@ -175,6 +181,19 @@ if (-not $DeployPath) {
         Write-Host "  [$($i + 1)] $($files[$i])$marker"
     }
     Write-Host "  [A] All files for $DeployHost"
+
+    # Recently changed: the 5 newest, plus anything else touched in the last hour. Numbers match the list above.
+    $byAge = @($fileInfos | Sort-Object Modified -Descending)
+    $cutoff = (Get-Date).AddHours(-1)
+    $recent = @($byAge | Where-Object { $_.Modified -gt $cutoff })
+    if ($recent.Count -lt 5) { $recent = @($byAge | Select-Object -First 5) }
+    Write-Host ""
+    Write-Host "Recently changed:"
+    foreach ($r in $recent) {
+        $n = [array]::IndexOf($files, $r.Path) + 1
+        Write-Host ("  [{0}] {1}  ({2:yyyy-MM-dd HH:mm})" -f $n, $r.Path, $r.Modified)
+    }
+    Write-Host ""
     $selection = Read-Host "Enter number/A (blank = default)"
     if ([string]::IsNullOrWhiteSpace($selection)) {
         if (-not $lastPath) { Write-Error "No default file set yet for '$DeployHost' - pick one." }
