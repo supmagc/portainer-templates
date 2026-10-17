@@ -172,3 +172,16 @@ Note: Promtail is deprecated upstream (folded into Grafana Alloy, removed from L
   `container_fs_*` / `container_blkio_*` read 0 for containers on ZFS, so per-container write attribution
   doesn't exist; `node_zfs_zpool_dataset_nwritten` (per dataset) is the closest signal. A dead drive can
   also show as `rate(node_disk_io_time_seconds_total)` ≈ 1 with near-zero throughput (Pi `sdb`, 2026-10-15).
+
+## zram `/var/log` (zram-config)
+
+Tracked: `etc/ztab` (swap + `/var/log` overlay) and `etc/systemd/system/zram-config.service.d/override.conf`.
+Gotchas, both hit 2026-10-17:
+
+- **Stale device list = silent no-op.** `/usr/local/lib/zram-config/zram-device-list` survives an
+  unclean shutdown; while it names devices that no longer exist, `zram-config start` logs
+  "already exists, skipping" to `/usr/local/share/zram-config/log/zram-config.log` (not the journal)
+  and exits 0, so `/var/log` silently stays on the SD. The override's `ExecStartPre` deletes it.
+- **`start`/`sync`/`restart` on a live Pi restarts journald** (~35 s). Services logging to stdout
+  (Caddy, Promtail, openhab) die with SIGPIPE, which systemd counts as a clean exit, so
+  `Restart=on-failure` does not bring them back. Reboot instead; never run `zram-config sync`.

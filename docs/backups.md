@@ -74,6 +74,18 @@ the dirs likely vanished with an unclean shutdown. `etc/tmpfiles.d/amanda-exim-l
 recreates them at boot; the unit sends amdump output to `/dev/null`, so the journal only shows
 that one line.
 
+## Mail relay (exim4)
+
+Amanda's nightly report and cron/Caddy mail go out through the ISP relay `relay.edpnet.be`
+(config type `smarthost`, port 25, opportunistic TLS, no login needed). Direct delivery to Gmail
+from the home IP fails with TLS errors. Tracked: `etc/exim4/update-exim4.conf.conf`,
+`etc/email-addresses` (rewrites senders to `bellecerise@edpnet.be`, which the relay accepts) and
+`etc/aliases` (all system users → `supmagc@gmail.com`). After deploying, run `sudo update-exim4.conf
+&& sudo systemctl restart exim4` — `oh-deploy-apply` does not. `/etc/exim4/passwd.client` holds a
+stale `relay.edpnet.be` login (only causes `501` log noise) and stays off-repo.
+`dc_other_hostnames` must include `bellecerise.local` (the `/etc/mailname` domain) or local mail
+to `root@bellecerise.local` is "Unrouteable".
+
 ## Data exports to the NAS
 
 `pi-data-backup@.{service,timer}` is a systemd template: one instance per dataset
