@@ -67,6 +67,13 @@ autolabels the `nas-openhab-*` vtapes on first use.
 
 Restores default to the fast local copy (`amrecover_changer "ch_ssd"`).
 
+**Missing log dirs (2026-10-16):** after the 10-15 reboot `/var/log/amanda` (and
+`/var/log/exim4`) didn't exist, so `amdump-openhab-dir` died with "create debug directory
+... Permission denied" (`backup` can't create dirs in `/var/log`). zram-config is active, so
+the dirs likely vanished with an unclean shutdown. `etc/tmpfiles.d/amanda-exim-logs.conf`
+recreates them at boot; the unit sends amdump output to `/dev/null`, so the journal only shows
+that one line.
+
 ## Data exports to the NAS
 
 `pi-data-backup@.{service,timer}` is a systemd template: one instance per dataset
