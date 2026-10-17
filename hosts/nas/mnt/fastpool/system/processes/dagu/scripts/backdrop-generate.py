@@ -110,6 +110,8 @@ NORMALISE_MAX_DB = env_num("NORMALISE_MAX_DB", -15)        # target peak, like t
 NVENC_PRESET = env("NVENC_PRESET", "p4")
 NVENC_CQ = env("NVENC_CQ", "23")
 GPU_PROBE_TIMEOUT = env_num("GPU_PROBE_TIMEOUT", 60)       # seconds; a wedged driver hangs, not errors
+FFMPEG_TIMEOUT = env_num("FFMPEG_TIMEOUT", 300)            # seconds per ffmpeg/ffprobe call; a corrupt file can hang one
+FAIL_RETRY_DAYS = env_num("FAIL_RETRY_DAYS", 7)            # skip an item whose montage failed until then
 
 MAX_ITEMS_PER_RUN = int(env_num("MAX_ITEMS_PER_RUN", 20))  # GPU budget, 0 = unlimited
 INTERVAL_HOURS = env_num("INTERVAL_HOURS", 0)              # 0 = run once and exit
@@ -162,6 +164,7 @@ def load_state() -> dict:
     s.setdefault("owned", {})
     s.setdefault("missing", {})   # ThemerrDB key -> iso timestamp of last negative lookup
     s.setdefault("rejected", {})  # YouTube URL or "network/<mediafire key>" -> {reason, checked, static}
+    s.setdefault("failed", {})    # folder -> iso timestamp of last failed local montage
     return s
 
 
@@ -299,16 +302,26 @@ def require_gpu() -> None:
 def run_gpu(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     """Run a CUDA/NVENC ffmpeg command. On failure, re-probe the GPU: if it's gone,
     raise GpuUnavailable; otherwise the failure is this file's problem."""
-    r = subprocess.run(cmd, capture_output=True, **kwargs)
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT, **kwargs)
+    except subprocess.TimeoutExpired:
+        log.warning("  ffmpeg timed out after %.0fs: %s", FFMPEG_TIMEOUT, " ".join(cmd[-3:]))
+        require_gpu()  # raises if the GPU is what hung; otherwise it's this file's problem
+        empty = "" if kwargs.get("text") else b""
+        return subprocess.CompletedProcess(cmd, 124, empty, empty)
     if r.returncode != 0:
         require_gpu()
     return r
 
 
 def probe_duration(path: Path) -> float:
-    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                        "-of", "csv=p=0", str(path)],
-                       capture_output=True, text=True, errors="replace")
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "csv=p=0", str(path)],
+                           capture_output=True, text=True, errors="replace",
+                           timeout=FFMPEG_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return 0.0
     try:
         return float(r.stdout.strip())
     except ValueError:
@@ -403,7 +416,11 @@ def concat_clips(clips: list[Path], tmp: Path, dest: Path) -> bool:
     out = tmp / "backdrop.mp4"
     cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
            "-f", "concat", "-safe", "0", "-i", str(listfile), "-c", "copy", str(out)]
-    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace",
+                           timeout=FFMPEG_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        r = subprocess.CompletedProcess(cmd, 124, "", "timed out")
     if r.returncode != 0 or not out.exists():
         log.warning("  concat -c copy failed, re-encoding: %s", r.stderr.strip()[-300:])
         cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
@@ -904,6 +921,10 @@ def run_once() -> dict:
                 budget_warned = True
             continue
 
+        if recent(state["failed"].get(key), FAIL_RETRY_DAYS):
+            stats["failed"] += 1
+            continue
+
         action = "Updating" if have_ours else "Adding"
         log.info("%s backdrop: %s", action, item["title"])
         if DRY_RUN:
@@ -914,8 +935,11 @@ def run_once() -> dict:
         backdrop_dir.mkdir(parents=True, exist_ok=True)
         if generate_backdrop(videos, dest):
             record_owned(state, key, dest, source="local", sources=current_sources)
+            state["failed"].pop(key, None)
             stats["updated" if have_ours else "added"] += 1
         else:
+            state["failed"][key] = now().isoformat()
+            save_state(state)
             stats["failed"] += 1
 
     save_state(state)
