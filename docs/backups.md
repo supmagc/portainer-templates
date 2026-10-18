@@ -217,7 +217,7 @@ Cross-cutting layers the rows below refer to:
 
 | Item | What to protect | Priority | How | Status |
 |---|---|---|---|---|
-| Nextcloud data (`leftpool/nextcloud`) | Personal files, photos, documents | Critical | Snapshots + Cloud Sync with versioning | **Partial** — Cloud Sync scope unverified |
+| Nextcloud data (`rightpool/nextcloud`, moving from `leftpool` 2026-10-18) | Personal files, photos, documents | Critical | Snapshots + Cloud Sync with versioning | **Partial** — Cloud Sync scope unverified |
 | Nextcloud app dir (`nextcloud/app/html`) | `config.php` (instance secrets), installed apps | High | Copy `config.php` (or the dir) → `rightpool/backup/automated/nextcloud` | **Gap** |
 | Nextcloud DB (`nextcloud` in MariaDB) | Metadata and shares | Critical | Nightly dump (MariaDB row below) | **Done** |
 | OnlyOffice | DB `onlyoffice`, `data`/`log` | Low | DB is dumped; documents live in Nextcloud, the rest is rebuildable | **Done** (DB) |

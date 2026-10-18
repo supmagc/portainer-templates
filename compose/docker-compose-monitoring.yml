@@ -136,7 +136,7 @@ services:
       - /mnt/fastpool/system/multimedia/lidarr/logs:/var/log/apps/lidarr:ro
       - /mnt/fastpool/system/multimedia/bazarr/log:/var/log/apps/bazarr:ro
       - /mnt/fastpool/system/downloads/prowlarr/logs:/var/log/apps/prowlarr:ro
-      - /mnt/leftpool/nextcloud/nextcloud.log:/var/log/apps/nextcloud/nextcloud.log:ro
+      - /mnt/rightpool/nextcloud/nextcloud.log:/var/log/apps/nextcloud/nextcloud.log:ro
     command:
       - "-config.file=/etc/promtail/config.yml"
 

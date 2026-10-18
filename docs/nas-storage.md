@@ -16,16 +16,19 @@ snapshots and an offsite B2 copy taken from the *source* (not the replica).
 | Replica on the other pool | One pool failing, quick local restore | Same box, same site |
 | B2 (Cloud Sync) | Site loss | Sync mode propagates deletions unless the bucket keeps versions |
 
-`fastpool` is live app state and is never the only copy: its backups land on `leftpool`.
+**Pool roles (decided 2026-10-18):** `rightpool` holds all primary data; `leftpool` holds only
+`extras` and the `replica/*` datasets. Nothing else is planned for `leftpool`.
+
+`fastpool` is live app state and is never the only copy: its backups land on `rightpool`.
 Media that can be re-downloaded (movies, series, downloads, caches) gets none of this.
 
 ## Target layout
 
 | Dataset | Home | Replica | Snapshots | B2 |
 |---|---|---|---|---|
-| `leftpool/backup/automated` (app + DB dumps, config harvest) | left | none — already a backup of `fastpool` | yes | yes |
-| `leftpool/backup/manual` | left | `rightpool/replica/backup-manual` | yes | yes |
-| `leftpool/nextcloud` | left | `rightpool/replica/nextcloud` | yes | yes (new job) |
+| `rightpool/backup/automated` (app + DB dumps, config harvest) | right | none — already a backup of `fastpool` | yes | yes |
+| `rightpool/backup/manual` | right | `leftpool/replica/backup-manual` | yes | yes |
+| `rightpool/nextcloud` (moved from `leftpool` 2026-10-18) | right | `leftpool/replica/nextcloud` | yes | yes (new job) |
 | `rightpool/pictures` (`CameraImport` + `CameraAlbums`, see [photos.md](photos.md)) | right | `leftpool/replica/pictures` | yes | yes |
 | `rightpool/pictures-immich` (phone uploads) | right | `leftpool/replica/pictures-immich` | yes | yes |
 | `rightpool/pictures-exported` (regenerable JPEGs) | right | none | optional | none |
@@ -34,8 +37,8 @@ Media that can be re-downloaded (movies, series, downloads, caches) gets none of
 | `leftpool/extras` (Stash, 2.0T) | left | decision pending (`rightpool` has room) | yes | cost decision |
 | Movies, series, music, downloads | right | none | none | none (music: decide) |
 
-Space (2026-10-08): `leftpool` 4.6T free, `rightpool` 7.8T free; the replicas above total
-roughly 0.9T on `leftpool` and 0.15T on `rightpool`.
+Space (2026-10-08): `leftpool` 4.6T free, `rightpool` 7.8T free; with every replica now on
+`leftpool` it takes roughly 1.0T of that (the old figure split it across both pools).
 
 ## Snapshot and replication policy
 
@@ -50,25 +53,46 @@ roughly 0.9T on `leftpool` and 0.15T on `rightpool`.
 
 ## Migration
 
-State as of 2026-10-08: `leftpool/iocage` and `leftpool/system` deleted; nothing below done.
+State as of 2026-10-18: `leftpool/iocage` and `leftpool/system` deleted; `leftpool/multimedia/phones`
+retired (see Open). The steps below are otherwise not done.
 
-1. **Do not delete `leftpool/backup` yet.** It is the target home of `manual` and is already
-   mounted: Syncthing uses `/mnt/leftpool/backup/syncthing` (`docker-compose-syncthing.yml:31`).
-   Verify it equals `rightpool/backup/manual`
+**Sequencing (agreed 2026-10-18):**
+
+1. **Done 2026-10-18:** `leftpool/nextcloud` moved to `rightpool/nextcloud` and its snapshot
+   task moved with it (compose paths repointed, not yet deployed). Still to do: the
+   `leftpool/replica/nextcloud` replica, and the old `leftpool/nextcloud` stays `readonly=on`
+   for a week before destroy.
+2. **Next:** scheduled replication of the important `rightpool` datasets (pictures,
+   pictures-immich, phones, backup-manual) → `leftpool/replica/*`.
+3. **After that:** re-create the Backblaze B2 Cloud Sync tasks from the *source* datasets
+   (bucket versioning on first), repointing the old jobs per step 3 below.
+
+Until step 3 is done, B2 offsite coverage is **absent or stale** — treat the replica as the
+only second copy, and it shares the box.
+
+**Snapshot tasks that exist today** (everything else in the table is still unsnapshotted):
+
+| Dataset | Why it has snapshots |
+| --- | --- |
+| `rightpool/nextcloud` | Ransomware / mass-delete rollback |
+| `backup/manual` (pool not recorded) | Old irreplaceable material; must not be lost or silently corrupted |
+| `fastpool/system` | Roll back a big misconfiguration of app state |
+
+Steps:
+
+1. **`backup` stays on `rightpool`** (superseding the 2026-10-08 plan to move it to leftpool),
+   so no `automated` path edits are needed. Syncthing is unused (user, 2026-10-18), so nothing
+   needs repointing; if `leftpool/backup` still exists, verify it equals
+   `rightpool/backup/manual`
    (`rsync -rnc --itemize-changes /mnt/leftpool/backup/ /mnt/rightpool/backup/manual/` → empty),
-   then retire the right-pool copy.
-2. **Move `automated` to leftpool.** `zfs send` a snapshot of `rightpool/backup/automated` into
-   `leftpool/backup/automated`, then repoint every writer (about 16 paths, all
-   `/mnt/rightpool/backup/automated/<app>`): `docker-compose-multimedia.yml`,
-   `-downloads.yml`, `-extras.yml`, `dagu/dags/postgres-backup.yaml`, `mariadb-backup.yaml`.
-   Redeploy, confirm a fresh backup lands, keep the old dataset read-only for a week.
-3. **Pictures out of `multimedia`:** `zfs rename rightpool/multimedia/pictures rightpool/pictures`
+   then retire it.
+2. **Pictures out of `multimedia`:** `zfs rename rightpool/multimedia/pictures rightpool/pictures`
    (instant, keeps children and snapshots; `phones` likewise if wanted). Update the SMB share,
    Cloud Sync job, snapshot task and any compose mount; the Emby mounts are already commented out.
-4. Create `rightpool/replica` and `leftpool/replica`, then the snapshot, replication and
+3. Create `leftpool/replica` (the only new dataset needed), then the snapshot, replication and
    Cloud Sync tasks from the table. Repoint the existing B2 jobs
-   (`rightpool/backup` → `leftpool/backup`, pictures/phones to the new paths).
-5. Restore test from snapshot, from replica, from B2.
+   (`rightpool/backup` stays; pictures/phones to the new paths).
+4. Restore test from snapshot, from replica, from B2.
 
 Always `zfs destroy -nv` first, snapshot before destroying, and `readonly=on` + rename for a
 week before the real destroy.
@@ -80,7 +104,7 @@ week before the real destroy.
 - `leftpool/multimedia/phones` (154G) was removed 2026-10-09: sha256 compare showed rightpool
   held a subset, the 1,611 left-only files were copied over (`rightpool/.../phones` 130G →
   134G), re-hash confirmed 0 missing, then the leftpool copy was destroyed. `rightpool` is now
-  the only copy (B2 covers it). Syncthing mounts all of `/mnt/leftpool/` as `/data2`, the
-  likely former writer — unverified; check it doesn't recreate `leftpool/multimedia/phones`,
-  and that mount also lets it write anywhere on `leftpool`.
+  the only copy (B2 covers it). Syncthing (now unused) mounted all of
+  `/mnt/leftpool/` as `/data2` and was the likely former writer; if its stack is still
+  deployed, stop it so nothing recreates `leftpool/multimedia/phones`.
 - Whether `leftpool/extras` gets a replica or B2.

@@ -64,7 +64,7 @@ services:
       - nextcloud-admin-password
     volumes:
       - "/dev/dri:/dev/dri"
-      - "/mnt/leftpool/nextcloud:/var/www/html/data:z"
+      - "/mnt/rightpool/nextcloud:/var/www/html/data:z"
       - "/mnt/fastpool/system/nextcloud/app/html:/var/www/html:z"
       - "/mnt/fastpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z"
       - "/mnt/fastpool/system/nextcloud/app/apcu.ini:/usr/local/etc/php/conf.d/zz-apcu.ini:z,ro"
@@ -105,7 +105,7 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
     volumes:
-      - "/mnt/leftpool/nextcloud:/var/www/html/data:z"
+      - "/mnt/rightpool/nextcloud:/var/www/html/data:z"
       - "/mnt/fastpool/system/nextcloud/app/html:/var/www/html:z"
       - "/mnt/fastpool/system/nextcloud/app/redis-session.ini:/usr/local/etc/php/conf.d/redis-session.ini:z,ro"
       - "/mnt/fastpool/system/nextcloud/app/apcu.ini:/usr/local/etc/php/conf.d/zz-apcu.ini:z,ro"
