@@ -121,6 +121,57 @@ services:
       retries: 6
       start_period: 30s
 
+  tunarr:
+    image: chrisbenincasa/tunarr:latest
+    container_name: tunarr
+    user: "${APP_USER}:${APP_GROUP}"
+    runtime: nvidia
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.tunarr-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.tunarr.rule=Host(`tunarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.tunarr.entrypoints=web"
+      - "traefik.http.routers.tunarr.middlewares=tunarr-https-redirect"
+      - "traefik.http.routers.tunarr-secure.rule=Host(`tunarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.tunarr-secure.entrypoints=web-secure"
+      - "traefik.http.routers.tunarr-secure.tls=true"
+      - "traefik.http.routers.tunarr-secure.tls.certresolver=stepca"
+      - "traefik.http.services.tunarr.loadbalancer.server.port=8000"
+    ports:
+      - ${NETWORK_INTERFACE}:8000:8000/tcp
+    volumes:
+      - /mnt/fastpool/system/multimedia/tunarr:/config/tunarr
+      - /mnt/rightpool/backup/automated/tunarr:/config/tunarr/backups
+    environment:
+      - TZ=${APP_TIMEZONE}
+      # the bundled binary extracts its sqlite addon to $HOME/.cache; the non-root user can't write /root
+      - HOME=/config/tunarr
+      # child meilisearch runs with cwd /tunarr (root-owned); its default ./dumps would be unwritable
+      - MEILI_DUMP_DIR=/config/tunarr/dumps
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/version" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
   sonarr:
     image: linuxserver/sonarr:latest
     container_name: sonarr

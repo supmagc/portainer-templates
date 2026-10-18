@@ -1,7 +1,8 @@
 [Unit]
 Description=HABApp
 Documentation=https://habapp.readthedocs.io
-After=openhab.service
+After=openhab.service zram-config.service
+PartOf=zram-config.service
 
 [Service]
 Type=simple

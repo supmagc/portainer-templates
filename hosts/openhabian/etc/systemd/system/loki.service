@@ -1,6 +1,7 @@
 [Unit]
 Description=Loki
-After=network-online.target
+After=network-online.target zram-config.service
+PartOf=zram-config.service
 RequiresMountsFor=/mnt/ssd
 Wants=network-online.target
 
