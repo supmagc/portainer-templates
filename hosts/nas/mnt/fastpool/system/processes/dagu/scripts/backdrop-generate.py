@@ -113,6 +113,18 @@ GPU_PROBE_TIMEOUT = env_num("GPU_PROBE_TIMEOUT", 60)       # seconds; a wedged d
 FFMPEG_TIMEOUT = env_num("FFMPEG_TIMEOUT", 300)            # seconds per ffmpeg/ffprobe call; a corrupt file can hang one
 FAIL_RETRY_DAYS = env_num("FAIL_RETRY_DAYS", 7)            # skip an item whose montage failed until then
 
+RUN_BUDGET_MIN = env_num("RUN_BUDGET_MIN", 100)            # stop starting work after this; keep below the DAG's timeout_sec
+DEADLINE = time.monotonic() + RUN_BUDGET_MIN * 60
+
+
+class OutOfTime(RuntimeError):
+    """RUN_BUDGET_MIN spent - end the run cleanly so state is saved and the DAG succeeds."""
+
+
+def check_budget() -> None:
+    if RUN_BUDGET_MIN and time.monotonic() > DEADLINE:
+        raise OutOfTime
+
 MAX_ITEMS_PER_RUN = int(env_num("MAX_ITEMS_PER_RUN", 20))  # GPU budget, 0 = unlimited
 INTERVAL_HOURS = env_num("INTERVAL_HOURS", 0)              # 0 = run once and exit
 
@@ -328,6 +340,23 @@ def probe_duration(path: Path) -> float:
         return 0.0
 
 
+THUMB_BYTES = 32 * 32 * 3
+THUMB_FPS = 2  # thumbnails per second of the window; starts are snapped to this grid
+
+
+def window_thumbs(path: Path, window_start: float, window_len: float) -> list[bytes]:
+    """32x32 thumbnails of [window_start, window_start+window_len] at THUMB_FPS, from ONE
+    ffmpeg call. Probing motion per candidate start cost 3 seeks+CUDA inits each (up to
+    ~90 per sample), which blew the DAG timeout on 4K remuxes."""
+    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-hwaccel", "cuda",
+           "-ss", str(max(window_start, 0)), "-i", str(path), "-t", str(window_len), "-an",
+           "-vf", f"fps={THUMB_FPS},scale=32:32", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    r = run_gpu(cmd)
+    if r.returncode != 0:
+        return []
+    return [r.stdout[i:i + THUMB_BYTES] for i in range(0, len(r.stdout) - THUMB_BYTES + 1, THUMB_BYTES)]
+
+
 def frame_pixels(path: Path, t: float) -> bytes | None:
     cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-hwaccel", "cuda",
            "-ss", str(max(t, 0)), "-i", str(path), "-frames:v", "1",
@@ -342,9 +371,12 @@ def pixel_diff(a: bytes, b: bytes) -> float:
     return sum(abs(x - y) for x, y in zip(a, b)) / len(a)
 
 
-def has_motion(path: Path, start: float) -> bool:
-    mid, end = start + SAMPLE_DURATION / 2, start + SAMPLE_DURATION
-    a, b, c = frame_pixels(path, start), frame_pixels(path, mid), frame_pixels(path, end)
+def has_motion(thumbs: list[bytes], window_start: float, start: float) -> bool:
+    def at(t: float) -> bytes | None:
+        i = round((t - window_start) * THUMB_FPS)
+        return thumbs[i] if 0 <= i < len(thumbs) else None
+
+    a, b, c = at(start), at(start + SAMPLE_DURATION / 2), at(start + SAMPLE_DURATION)
     if not a or not b or not c:
         return False
     return (pixel_diff(a, b) + pixel_diff(b, c)) / 2 >= MIN_MOTION
@@ -378,7 +410,9 @@ def pick_window(path: Path, target: float, lo: float, hi: float) -> float | None
     window_hi = min(hi - SAMPLE_DURATION, target + SEARCH_RADIUS)
     if window_hi <= window_lo:
         return None
-    cuts = cuts_in_window(path, window_lo, (window_hi - window_lo) + SAMPLE_DURATION)
+    span = (window_hi - window_lo) + SAMPLE_DURATION
+    cuts = cuts_in_window(path, window_lo, span)
+    thumbs = window_thumbs(path, window_lo, span)
 
     def clean(start: float) -> bool:
         return not any(start < c < start + SAMPLE_DURATION for c in cuts)
@@ -392,7 +426,7 @@ def pick_window(path: Path, target: float, lo: float, hi: float) -> float | None
         start = target + off
         if not (window_lo <= start <= window_hi):
             continue
-        if clean(start) and has_motion(path, start):
+        if clean(start) and has_motion(thumbs, window_lo, start):
             return start
     return None
 
@@ -453,6 +487,7 @@ def generate_backdrop(videos: list[Path], dest: Path) -> bool:
                 continue
             targets = [lo + (hi - lo) * (i + 0.5) / per_video for i in range(per_video)]
             for i, target in enumerate(targets):
+                check_budget()
                 start = pick_window(video, target, lo, hi)
                 if start is None:
                     log.debug("  no clean window near %.1fs in %s", target, video)
@@ -915,6 +950,10 @@ def run_once() -> dict:
         if have_ours and not needs_regen(owned, current_sources):
             continue
 
+        if RUN_BUDGET_MIN and time.monotonic() > DEADLINE:
+            log.warning("RUN_BUDGET_MIN reached, stopping; remaining items next run")
+            break
+
         if MAX_ITEMS_PER_RUN and processed >= MAX_ITEMS_PER_RUN:
             if not budget_warned:
                 log.info("MAX_ITEMS_PER_RUN reached, skipping further backdrops this run")
@@ -933,7 +972,12 @@ def run_once() -> dict:
 
         processed += 1
         backdrop_dir.mkdir(parents=True, exist_ok=True)
-        if generate_backdrop(videos, dest):
+        try:
+            generated = generate_backdrop(videos, dest)
+        except OutOfTime:
+            log.warning("RUN_BUDGET_MIN reached mid-item, stopping; %s is retried next run", item["title"])
+            break
+        if generated:
             record_owned(state, key, dest, source="local", sources=current_sources)
             state["failed"].pop(key, None)
             stats["updated" if have_ours else "added"] += 1
