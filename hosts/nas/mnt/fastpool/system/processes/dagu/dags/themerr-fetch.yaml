@@ -70,7 +70,7 @@ steps:
           - SONARR_API_KEY=${env.SONARR_API_KEY}
           - PATH_MAP=/movies=/media/movies;/tv=/media/tv
           - MEDIASERVER_TYPE=jellyfin
-          - MEDIASERVER_URL=http://jellyfin:8196
+          - MEDIASERVER_URL=http://jellyfin:8096
           - MEDIASERVER_API_KEY=${env.MEDIASERVER_API_KEY}
           - LOUDNESS_LUFS=-16
           - DOWNLOAD_DELAY=5
