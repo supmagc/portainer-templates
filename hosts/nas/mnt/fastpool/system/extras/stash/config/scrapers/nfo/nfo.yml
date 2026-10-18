@@ -1,0 +1,7 @@
+name: NFO sidecar
+sceneByFragment:
+  action: script
+  script:
+    - python
+    - nfo_scraper.py
+# Reads <video basename>.nfo next to the scene's file(s). See docs/extras.md.
