@@ -354,6 +354,23 @@ def probe_duration(path: Path) -> float:
         return 0.0
 
 
+_NO_NVDEC = {"av1"}  # Pascal NVDEC can't decode AV1; CUDA decode hangs/falls over, software is fine
+_codec_cache: dict[Path, list[str]] = {}
+
+
+def hwaccel(path: Path) -> list[str]:
+    if path not in _codec_cache:
+        try:
+            r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                "stream=codec_name", "-of", "csv=p=0", str(path)],
+                               capture_output=True, text=True, errors="replace", timeout=FFMPEG_TIMEOUT)
+            codec = r.stdout.strip()
+        except subprocess.TimeoutExpired:
+            codec = ""
+        _codec_cache[path] = [] if codec in _NO_NVDEC else ["-hwaccel", "cuda"]
+    return _codec_cache[path]
+
+
 THUMB_BYTES = 32 * 32 * 3
 THUMB_FPS = 2  # thumbnails per second of the window; starts are snapped to this grid
 
@@ -362,7 +379,7 @@ def window_thumbs(path: Path, window_start: float, window_len: float) -> list[by
     """32x32 thumbnails of [window_start, window_start+window_len] at THUMB_FPS, from ONE
     ffmpeg call. Probing motion per candidate start cost 3 seeks+CUDA inits each (up to
     ~90 per sample), which blew the DAG timeout on 4K remuxes."""
-    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-hwaccel", "cuda",
+    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", *hwaccel(path),
            "-ss", str(max(window_start, 0)), "-i", str(path), "-t", str(window_len), "-an",
            "-vf", f"fps={THUMB_FPS},scale=32:32", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     r = run_gpu(cmd)
@@ -372,7 +389,7 @@ def window_thumbs(path: Path, window_start: float, window_len: float) -> list[by
 
 
 def frame_pixels(path: Path, t: float) -> bytes | None:
-    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-hwaccel", "cuda",
+    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", *hwaccel(path),
            "-ss", str(max(t, 0)), "-i", str(path), "-frames:v", "1",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "32x32", "-"]
     r = run_gpu(cmd)
@@ -399,7 +416,7 @@ def has_motion(thumbs: list[bytes], window_start: float, start: float) -> bool:
 def cuts_in_window(path: Path, window_start: float, window_len: float) -> list[float]:
     """Scene-cut timestamps (absolute) inside [window_start, window_start+window_len].
     Scoped to a small local window rather than the whole file - much cheaper."""
-    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-hwaccel", "cuda",
+    cmd = ["ffmpeg", "-nostdin", "-hide_banner", *hwaccel(path),
            "-ss", str(max(window_start, 0)), "-i", str(path), "-t", str(window_len),
            "-vf", f"scale=320:-1,select='gt(scene,{SCENE_THRESHOLD})',showinfo",
            "-f", "null", "-"]
@@ -447,7 +464,7 @@ def pick_window(path: Path, target: float, lo: float, hi: float) -> float | None
 
 def extract_clip(path: Path, start: float, out: Path) -> bool:
     vf = f"scale=-2:min({BACKDROP_MAX_HEIGHT}\\,ih),format=yuv420p"  # Pascal NVENC can't encode 10-bit
-    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-hwaccel", "cuda",
+    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", *hwaccel(path),
            "-ss", str(start), "-i", str(path), "-t", str(SAMPLE_DURATION), "-an",
            "-vf", vf, "-c:v", "h264_nvenc", "-preset", NVENC_PRESET, "-rc", "vbr",
            "-cq", NVENC_CQ, "-b:v", "0", str(out)]
