@@ -34,7 +34,8 @@ area — it'll save you from re-discovering things the hard way.
 - **[gpu.md](gpu.md)** — the single shared NVENC GPU and the Watchtower/Tdarr restart
   incident.
 - **[extras.md](extras.md)** — the custom `library-organizer` Stash plugin (naming, studio
-  folders, NFO/poster/fanart, Whisparr rescan, dry-run/reconcile/orphan tasks, rollout).
+  folders, NFO/poster/fanart, Whisparr rescan, dry-run/reconcile/orphan tasks, rollout),
+  the NFO element layout, and the NFO sidecar Stash scraper (Identify fallback).
 - **[multimedia-library-layout.md](multimedia-library-layout.md)** — the canonical on-disk
   layout for the movies/series/music libraries (verified against Emby/Jellyfin naming) and
   the cleanup categories the `library-cleanup` Dagu DAG scans for.

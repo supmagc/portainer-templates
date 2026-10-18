@@ -120,3 +120,62 @@ shortened to fit the 200-char path cap, studio/date prefixes added to HypnoTube/
 (`--live` really changes files; `--scene ID` processes one scene). Run as 930, never root; read the
 summary on the report's last line rather than the Stash log; take the key from `.tokens`
 (`STASH_API_KEY`) and keep it out of shell history.
+
+## NFO layout
+
+One sidecar per video, same basename: `<video>.nfo` (Kodi/Jellyfin `<movie>`), plus `<video>-poster.png` (2:3 crop)
+and `<video>-fanart.png` (16:9 screenshot). `*.nfo-orig` is a backup of a converted/overwritten NFO. Sources of an NFO:
+
+| Origin | Recognisable by |
+| --- | --- |
+| Library Organizer (`lo/nfo.py`) | `<stash>` block; `uniqueid type="stash"`; `<thumb>`/`<fanart>` pointing at the sidecar images |
+| Whisparr Kodi export | `<episodedetails>` root (converted to `<movie>` on the next run); `uniqueid type="whisparr"` |
+| Whisparr/TPDB-era `<movie>` | extra `theporndbid`/`theporndbguid`/`phash`/`sourceid`/`art`/`trailer`/`mpaa` elements, copied through untouched |
+| Hand-made / other tools | whatever it has; unknown elements are always preserved |
+
+Element reference (what the organizer writes, in this order; empty ones are omitted):
+
+| Element | From Stash | Notes |
+| --- | --- | --- |
+| `title`, `originaltitle`, `sorttitle` | title | `sorttitle` = `<date> <title>` |
+| `plot`, `outline` | details | outline = first paragraph, 300 chars |
+| `premiered`, `releasedate`, `year` | date | |
+| `studio` (repeated) | studio, then each parent | child first, parents after |
+| `director`, `tag` (repeated), `rating`/`userrating` (0-10), `runtime` (min) | same-named | |
+| `dateadded`, `lastplayed`, `playcount`, `watched`, `resume/{position,total}` | play data | |
+| `set/name` | groups | |
+| `actor/{name,role,order,profile}` | performers | `role` = disambiguation, `profile` = first URL |
+| `uniqueid type=…` | existing ids kept, then `stash`, one per stash_id endpoint (`stashdb`, `tpdb`), `code` | `default="true"` kept from the original |
+| `thumb aspect="poster"`, `fanart/thumb` | sidecar image file names | relative to the NFO |
+| `website` (repeated) | urls | |
+| `fileinfo/streamdetails` | video file(s) | `video`: aspect, bitrate, codec, framerate, height, width, duration(min), durationinseconds; `audio/codec` |
+| `stash` | the rest | `scene_id`, `organized`, `o_counter`, `interactive`, `custom_field name=`, `marker` (title, seconds, end_seconds, primary_tag, tag), `gallery`, `updated_at` |
+
+Owned elements (rewritten from Stash every run) are `lo/nfo.py` `OWNED`; anything else in the file is carried over.
+`<genre>` is not owned, so a `<genre>` list from another tool survives but is not synced to Stash tags.
+
+## NFO sidecar scraper
+
+Stash script scraper `scrapers/nfo/` (`nfo.yml` + `nfo_scraper.py`, stdlib only; deploys to `/config/scrapers/nfo/`)
+for scenes metadata sources (TPDB/StashDB) don't know. It reads `<video basename>.nfo` of the scene's file (path comes in
+the scraper's stdin JSON, `files[].path`) and returns `null` ("no match") when there is no usable `<movie>` NFO.
+Use it as the last source in **Identify** (after TPDB) or manually via Scrape with → NFO sidecar.
+
+| NFO | Scraped scene field |
+| --- | --- |
+| `title` (else `originaltitle`) | `title`, cleaned: trailing `[quality]` removed; a Whisparr `Studio - yyyy-mm-dd - Title` prefix split off into studio/date; a trailing ` - performers` removed when it equals the actor set (any order) |
+| `premiered` / `releasedate` / `aired` (else date from the title prefix) | `date` |
+| `studio` (repeated) / title prefix | `studio` with `parent` chain (child first, as the organizer writes) |
+| `plot` (else `outline`), `director` | `details`, `director` |
+| `tag` + `genre` (deduped, "Adult" dropped) | `tags` |
+| `actor` `name`, `role`, `gender`, `birthdate`, `height`, `country`, `ethnicity`, `eye_color`, `hair_color`, `profile`, http(s) `thumb` | `performers` (role → disambiguation, profile → urls, thumb → images) |
+| `website`, `url`, `sourceid` (bare homepages skipped) | `urls` |
+| `uniqueid type="code"` | `code` |
+| `set/name` | `groups` |
+| `fanart/thumb`, `thumb`, `art/background`, `art/poster` (first usable; local files inlined as data URI, ≤ 8 MB) | `image` |
+
+Not mapped (Stash scrapers cannot set them): rating, play data, markers, runtime, other `uniqueid`s (e.g. `adultprime`,
+`tpdb`). Identify must have "create missing" on for studios/performers/tags, and "set cover image" if the NFO image
+should be used. The NFOs the organizer generates are readable too; for those it just re-applies Stash's own data.
+Reload via Settings → Metadata Providers → Scrapers → Reload scrapers. **Unverified:** that the Identify task passes
+`files[].path` like the per-scene Scrape button does (source says so for the latter); test on one scene first.
