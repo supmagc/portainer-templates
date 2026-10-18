@@ -117,6 +117,15 @@ RUN_BUDGET_MIN = env_num("RUN_BUDGET_MIN", 100)            # stop starting work 
 DEADLINE = time.monotonic() + RUN_BUDGET_MIN * 60
 
 
+ITEM_BUDGET_MIN = env_num("ITEM_BUDGET_MIN", 10)          # per-item cap; a file this slow is marked failed
+SLOW_CALL_SEC = env_num("SLOW_CALL_SEC", 30)               # log any ffmpeg call slower than this
+item_deadline = float("inf")
+
+
+class ItemTooSlow(RuntimeError):
+    pass
+
+
 class OutOfTime(RuntimeError):
     """RUN_BUDGET_MIN spent - end the run cleanly so state is saved and the DAG succeeds."""
 
@@ -124,6 +133,8 @@ class OutOfTime(RuntimeError):
 def check_budget() -> None:
     if RUN_BUDGET_MIN and time.monotonic() > DEADLINE:
         raise OutOfTime
+    if time.monotonic() > item_deadline:
+        raise ItemTooSlow
 
 MAX_ITEMS_PER_RUN = int(env_num("MAX_ITEMS_PER_RUN", 20))  # GPU budget, 0 = unlimited
 INTERVAL_HOURS = env_num("INTERVAL_HOURS", 0)              # 0 = run once and exit
@@ -314,8 +325,11 @@ def require_gpu() -> None:
 def run_gpu(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     """Run a CUDA/NVENC ffmpeg command. On failure, re-probe the GPU: if it's gone,
     raise GpuUnavailable; otherwise the failure is this file's problem."""
+    t0 = time.monotonic()
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT, **kwargs)
+        if time.monotonic() - t0 > SLOW_CALL_SEC:
+            log.warning("  slow ffmpeg call (%.0fs): %s", time.monotonic() - t0, " ".join(cmd[-8:]))
     except subprocess.TimeoutExpired:
         log.warning("  ffmpeg timed out after %.0fs: %s", FFMPEG_TIMEOUT, " ".join(cmd[-3:]))
         require_gpu()  # raises if the GPU is what hung; otherwise it's this file's problem
@@ -472,6 +486,18 @@ def concat_clips(clips: list[Path], tmp: Path, dest: Path) -> bool:
 
 
 def generate_backdrop(videos: list[Path], dest: Path) -> bool:
+    global item_deadline
+    item_deadline = time.monotonic() + ITEM_BUDGET_MIN * 60 if ITEM_BUDGET_MIN else float("inf")
+    try:
+        return _generate_backdrop(videos, dest)
+    except ItemTooSlow:
+        log.error("  gave up after ITEM_BUDGET_MIN=%.0f min: %s", ITEM_BUDGET_MIN, videos)
+        return False
+    finally:
+        item_deadline = float("inf")
+
+
+def _generate_backdrop(videos: list[Path], dest: Path) -> bool:
     per_video = max(N_SAMPLES // len(videos), 1)
     clips: list[Path] = []
     with tempfile.TemporaryDirectory(dir=DATA_DIR) as tmp_s:
@@ -490,7 +516,7 @@ def generate_backdrop(videos: list[Path], dest: Path) -> bool:
                 check_budget()
                 start = pick_window(video, target, lo, hi)
                 if start is None:
-                    log.debug("  no clean window near %.1fs in %s", target, video)
+                    log.info("  no clean window near %.0fs", target)
                     continue
                 clip = tmp / f"clip_{len(clips):03d}.mp4"
                 if extract_clip(video, start, clip):
