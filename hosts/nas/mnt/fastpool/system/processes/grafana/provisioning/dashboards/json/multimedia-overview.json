@@ -504,6 +504,38 @@
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 1 } }, "overrides": [] },
       "targets": [
         { "expr": "mysql_info_schema_table_rows{schema=\"spotweb\", table=\"spots\"}", "legendFormat": "spots", "refId": "A" }
-      ] }
+      ] },
+
+    { "id": 123, "type": "row", "title": "Tunarr", "description": "Reachability only - Tunarr has no native Prometheus metrics. Traefik-discovered probe + cAdvisor for the container.", "gridPos": { "x": 0, "y": 120, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 124, "title": "Status", "type": "stat", "gridPos": { "x": 0, "y": 121, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "1": { "text": "Up", "color": "green" }, "0": { "text": "Down", "color": "red" } } }], "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "probe_success{job=\"blackbox-https\", source=\"traefik\", router=\"tunarr-secure\"}", "instant": true, "refId": "A" }] },
+    { "id": 125, "title": "Health", "type": "stat", "gridPos": { "x": 4, "y": 121, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "-1": { "text": "no check", "color": "text" }, "0": { "text": "Unhealthy", "color": "red" }, "1": { "text": "Healthy", "color": "green" } } }], "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "max(container_health_state{name=\"tunarr\"})", "instant": true, "refId": "A" }] },
+    { "id": 126, "title": "Restarts (24h)", "type": "stat", "gridPos": { "x": 8, "y": 121, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":3}] } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "sum(changes(container_start_time_seconds{name=\"tunarr\"}[24h]))", "instant": true, "refId": "A" }] },
+    { "id": 127, "title": "Response Time", "type": "stat", "gridPos": { "x": 12, "y": 121, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "probe_duration_seconds{job=\"blackbox-https\", source=\"traefik\", router=\"tunarr-secure\"}", "instant": true, "refId": "A" }] },
+    { "id": 128, "title": "CPU", "type": "stat", "gridPos": { "x": 16, "y": 121, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "sum(rate(container_cpu_usage_seconds_total{name=\"tunarr\"}[$__rate_interval]))", "instant": true, "refId": "A" }] },
+    { "id": 129, "title": "Memory", "type": "stat", "gridPos": { "x": 20, "y": 121, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "targets": [{ "expr": "container_memory_working_set_bytes{name=\"tunarr\"}", "instant": true, "refId": "A" }] }
   ]
 }
