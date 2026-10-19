@@ -1,0 +1,12 @@
+{
+  "guid": "b971fd5a-54a6-4429-b62f-426c9f1f1f94",
+  "name": "Genre Cleaner Extended",
+  "description": "Manage and clean up genres for items in your library.",
+  "overview": "Rename, merge and remove genres per media type.",
+  "owner": "supmagc",
+  "category": "Metadata",
+  "version": "2.0.0.0",
+  "targetAbi": "12.0.0.0",
+  "timestamp": "2026-10-19T00:00:00Z",
+  "changelog": "Port to Jellyfin."
+}
