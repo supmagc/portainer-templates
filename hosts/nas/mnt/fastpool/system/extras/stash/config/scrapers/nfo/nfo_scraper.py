@@ -1,4 +1,4 @@
-"""Stash script scraper: fill a scene from the Kodi/Jellyfin <movie> NFO next to its video file.
+"""Stash script scraper: fill a scene from the Kodi/Jellyfin <movie> or <episodedetails> NFO next to its video file.
 
 stdin: Stash scene fragment JSON (has files[].path). stdout: scraped scene JSON, or null when no usable NFO.
 """
@@ -104,7 +104,7 @@ def scrape(fragment):
         root = ET.parse(path).getroot()
     except (ET.ParseError, OSError):
         return None
-    if root.tag != "movie":
+    if root.tag not in ("movie", "episodedetails"):
         return None
 
     actor_els = root.findall("actor")
