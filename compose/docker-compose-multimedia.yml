@@ -95,9 +95,9 @@ services:
       - /mnt/fastpool/system/multimedia/jellyfin/cache:/cache
       - /mnt/fastpool/system/multimedia/jellyfin/metadata:/metadata
       - /mnt/rightpool/backup/automated/jellyfin:/config/data/data/backups
-      - /mnt/rightpool/multimedia/movies:/mnt/movies:ro
-      - /mnt/rightpool/multimedia/series:/mnt/series:ro
-      - /mnt/rightpool/multimedia/music:/mnt/music:ro
+      - /mnt/rightpool/multimedia/movies:/mnt/movies
+      - /mnt/rightpool/multimedia/series:/mnt/series
+      - /mnt/rightpool/multimedia/music:/mnt/music
     environment:
       - PGID=${APP_USER}
       - PUID=${APP_GROUP}
