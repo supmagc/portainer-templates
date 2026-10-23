@@ -36,6 +36,9 @@ area — it'll save you from re-discovering things the hard way.
 - **[extras.md](extras.md)** — the custom `library-organizer` Stash plugin (naming, studio
   folders, NFO/poster/fanart, Whisparr rescan, dry-run/reconcile/orphan tasks, rollout),
   the NFO element layout, and the NFO sidecar Stash scraper (Identify fallback).
+- **[stash-performer-sets.md](stash-performer-sets.md)** — the custom `performer-sets` Stash
+  plugin: photosets (PornPics, EliteBabes) and stash-box promo images per performer, set.json
+  sidecars → gallery metadata, the dHash dedupe index, and what each source does/doesn't provide.
 - **[multimedia-library-layout.md](multimedia-library-layout.md)** — the canonical on-disk
   layout for the movies/series/music libraries (verified against Emby/Jellyfin naming) and
   the cleanup categories the `library-cleanup` Dagu DAG scans for.
