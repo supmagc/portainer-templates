@@ -44,6 +44,27 @@ sign in to Seerr.
   `Connection refused (seerr:80)`. Its *My Requests* section throws
   `Unrecognized Guid format` while Seerr holds another server's item IDs.
 
+## Music (Navidrome only)
+
+Jellyfin has no music library (removed 2026-10-23): all listening goes through Navidrome
+(Symfonium, Feishin), so there is no favourites/ratings/play-count sync to maintain.
+Navidrome mounts the music `:ro` and never writes; it reads tags plus files other apps write.
+
+- **Lidarr writes the sidecars** (Settings → Metadata → Kodi (XBMC) / Emby, all four boxes
+  on): `artist.nfo`, `album.nfo`, artist `folder.jpg`/`fanart.jpg`/`banner`/`logo`, album
+  `folder.jpg`/`discart`. Images are skipped if the file exists; `.nfo` files are
+  **overwritten** even when another app wrote them, so keep Lidarr the only nfo writer.
+- **`artist-nfo-metadata` plugin** reads only `<Artist>/artist.nfo` (folder name must equal
+  the artist name, case-insensitive): `<biography>` and `<musicbrainzartistid>`. `<thumb>` is
+  used only if it's an http(s) URL, which neither Lidarr nor Jellyfin/Emby write. It never
+  reads `album.nfo`. Needs the `library` permission on Navidrome's Plugins page; misses log
+  at debug level only.
+- **Artist images:** `ND_ARTISTARTPRIORITY` puts Lidarr's `folder.*` before the external
+  agents (Apple Music). Album covers use the default `cover.*, folder.*, front.*, embedded,
+  external`; `discart.*` matches the default disc-art `disc*.*`. Navidrome 0.64 stores
+  resolved artwork, so an art-priority change only applies after
+  `docker exec navidrome navidrome artwork reprocess --all`.
+
 ## Jellyfin search (Meilisearch plugin)
 
 Jellyfin 12 has an external search-provider hook, so search is improved server-side by the

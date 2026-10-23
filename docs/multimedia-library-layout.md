@@ -120,7 +120,8 @@ Music/
 
 - One folder per album, one folder per artist containing its albums — Jellyfin's own
   requirement is just "one album per folder"; embedded tags (artist/album/track), not the
-  folder/file names, drive matching in both Emby and Jellyfin. Track filenames here follow
+  folder/file names, drive matching in Navidrome (the only music server since 2026-10-23,
+  see [multimedia.md](multimedia.md#music-navidrome-only)). Track filenames here follow
   `<Album> - NN - <Artist> - <Track>.<ext>` for human browsability, not because the servers
   need it.
 - Artist-level: `artist.nfo`, `fanart.jpg`, `banner.jpg`, `logo.png`, `extrafanart/`.

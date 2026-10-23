@@ -97,10 +97,9 @@ services:
       - /mnt/rightpool/backup/automated/jellyfin:/config/data/data/backups
       - /mnt/rightpool/multimedia/movies:/mnt/movies
       - /mnt/rightpool/multimedia/series:/mnt/series
-      - /mnt/rightpool/multimedia/music:/mnt/music
     environment:
-      - PGID=${APP_USER}
-      - PUID=${APP_GROUP}
+      - PGID=${APP_GROUP}
+      - PUID=${APP_USER}
       - TZ=${APP_TIMEZONE}
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
@@ -512,6 +511,8 @@ services:
       - ND_LASTFM_APIKEY=${NAVIDROME_LASTFM_API_KEY}
       - ND_LASTFM_SECRET=${NAVIDROME_LASTFM_SECRET}
       - ND_AGENTS=artist-nfo-metadata,apple-music,lastfm,listenbrainz
+      # changing this needs `navidrome artwork reprocess --all` to apply to existing artists
+      - ND_ARTISTARTPRIORITY=artist.*, folder.*, album/artist.*, external
       - ND_PROMETHEUS_ENABLED=true
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:4533/ping || exit 1
