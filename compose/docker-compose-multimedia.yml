@@ -121,6 +121,95 @@ services:
       retries: 6
       start_period: 30s
 
+  # Jellyfin search backend; no watchtower label (a minor-version bump can refuse to open the old index)
+  meilisearch:
+    image: getmeili/meilisearch:v1
+    container_name: meilisearch
+    user: "${APP_USER}:${APP_GROUP}"
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    # no native MEILI_MASTER_KEY_FILE support, so the secret is exported by a wrapper; VERIFY the image entrypoint is still `tini --` + /bin/meilisearch
+    command: ["sh", "-c", "MEILI_MASTER_KEY=$$(cat /run/secrets/meilisearch-master-key) exec /bin/meilisearch"]
+    secrets:
+      - meilisearch-master-key
+    volumes:
+      - /mnt/fastpool/system/multimedia/meilisearch:/meili_data
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - MEILI_ENV=production
+      - MEILI_NO_ANALYTICS=true
+      - MEILI_HTTP_ADDR=0.0.0.0:7700
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://127.0.0.1:7700/health || exit 1
+      interval: 1m30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  # streamystats:
+  #   image: ghcr.io/fredrikburmester/streamystats-nextjs:latest
+  #   container_name: streamystats
+  #   networks:
+  #     - default
+  #     - utilities_default
+  #   pull_policy: missing
+  #   restart: unless-stopped
+  #   # DATABASE_URL, SESSION_SECRET, INTERNAL_API_KEY and NEXT_SERVER_ACTIONS_ENCRYPTION_KEY come from one secret env file; format in docs/multimedia.md
+  #   command: ["sh", "-c", "set -a; . /run/secrets/streamystats-env; exec node server.js"]
+  #   secrets:
+  #     - streamystats-env
+  #   labels:
+  #     - "com.centurylinklabs.watchtower.enable=true"
+  #     - "traefik.enable=true"
+  #     - "traefik.http.middlewares.streamystats-https-redirect.redirectscheme.scheme=https"
+  #     - "traefik.http.routers.streamystats.rule=Host(`streamystats.${NETWORK_DOMAIN}`)"
+  #     - "traefik.http.routers.streamystats.entrypoints=web"
+  #     - "traefik.http.routers.streamystats.middlewares=streamystats-https-redirect"
+  #     - "traefik.http.routers.streamystats-secure.rule=Host(`streamystats.${NETWORK_DOMAIN}`)"
+  #     - "traefik.http.routers.streamystats-secure.entrypoints=web-secure"
+  #     - "traefik.http.routers.streamystats-secure.tls=true"
+  #     - "traefik.http.routers.streamystats-secure.tls.certresolver=stepca"
+  #     - "traefik.http.services.streamystats.loadbalancer.server.port=3000"
+  #   ports:
+  #     - ${NETWORK_INTERFACE}:3010:3000/tcp
+  #   environment:
+  #     - TZ=${APP_TIMEZONE}
+  #     - JOB_SERVER_URL=http://streamystats-jobs:3005
+  #   depends_on:
+  #     streamystats-jobs:
+  #       condition: service_healthy
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 1G
+
+  # streamystats-jobs:
+  #   image: ghcr.io/fredrikburmester/streamystats-job-server:latest
+  #   container_name: streamystats-jobs
+  #   networks:
+  #     - default
+  #     - utilities_default
+  #   pull_policy: missing
+  #   restart: unless-stopped
+  #   command: ["sh", "-c", "set -a; . /run/secrets/streamystats-env; ./migrate-bin && exec ./server"]
+  #   secrets:
+  #     - streamystats-env
+  #   labels:
+  #     - "com.centurylinklabs.watchtower.enable=true"
+  #   environment:
+  #     - TZ=${APP_TIMEZONE}
+  #     - NEXTJS_URL=http://streamystats:3000
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 2G
+
   tunarr:
     image: chrisbenincasa/tunarr:latest
     container_name: tunarr
@@ -153,12 +242,13 @@ services:
       - HOME=/config/tunarr
       # child meilisearch runs with cwd /tunarr (root-owned); its default ./dumps would be unwritable
       - MEILI_DUMP_DIR=/config/tunarr/dumps
+      - TUNARR_WORKER_POOL_SIZE=2
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 1G
         reservations:
           memory: 512M
           devices:
@@ -429,3 +519,9 @@ services:
       timeout: 10s
       retries: 6
       start_period: 30s
+
+secrets:
+  meilisearch-master-key:
+    file: /mnt/fastpool/system/processes/secrets/meilisearch-master-key.txt
+  streamystats-env:
+    file: /mnt/fastpool/system/processes/secrets/streamystats-env.txt

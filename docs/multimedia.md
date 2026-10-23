@@ -10,7 +10,7 @@ The media-library stacks and how their apps interlock. Related docs:
 
 | Stack | Services |
 |---|---|
-| `multimedia` | Emby, Jellyfin, Sonarr, Radarr, Lidarr, Bazarr, Organizr, Seerr, Navidrome |
+| `multimedia` | Emby, Jellyfin, Meilisearch, Streamystats (+ jobs), Sonarr, Radarr, Lidarr, Bazarr, Organizr, Seerr, Navidrome |
 | `downloads` | SABnzbd (+ cleanup sidecar), qBittorrent, Prowlarr, Spotweb, BitMagnet |
 | `extras` | stash, namer, whisparr |
 
@@ -43,3 +43,53 @@ sign in to Seerr.
   (`http://seerr:5055`); without it the plugin connects on port 80 and logs
   `Connection refused (seerr:80)`. Its *My Requests* section throws
   `Unrecognized Guid format` while Seerr holds another server's item IDs.
+
+## Jellyfin search (Meilisearch plugin)
+
+Jellyfin 12 has an external search-provider hook, so search is improved server-side by the
+[Meilisearch plugin](https://github.com/Shadowghost/jellyfin-plugin-meilisearch) and every
+client (Streamyfin, Pelagica, Wholphin, web) gets it with no proxy routing. JellySearch is
+archived and was the pre-12 reverse-proxy workaround; don't use it.
+
+- Plugin repo (unstable feed only): `https://raw.githubusercontent.com/Shadowghost/jellyfin-plugin-meilisearch/metadata/unstable/manifest.json`.
+  Plugin settings: URL `http://meilisearch:7700`, API key = the master key, then run
+  *Rebuild Meilisearch Index*.
+- The `meilisearch` service has no `MEILI_MASTER_KEY_FILE` support, so the compose `command`
+  exports the key from the Docker secret. It carries no Watchtower label: a minor-version
+  bump can refuse to open the old index (rebuildable, but not unattended).
+- BusyBox `wget` resolves `localhost` to `::1` and doesn't fall back to IPv4, so the
+  healthcheck uses `127.0.0.1`.
+- Tunarr runs its own bundled Meilisearch (hardcoded `localhost`, no key, no remote option);
+  it can't share this instance.
+- **Semantic search is deliberately off.** The plugin runs Qwen3-Embedding-0.6B *inside the
+  Jellyfin process* (ONNX, ~610 MB download, 1-2 GB RAM while loaded) and registers a
+  `userProvided` embedder, so Meilisearch never embeds anything and the plugin sends no
+  `hybrid` parameter without its own vector. Enabling it means raising Jellyfin's 2G limit.
+  There is no setting to use an external embedding endpoint.
+
+## Streamystats
+
+Watch stats and embedding-based recommendations; Streamyfin and Pelagica integrate with it.
+Two containers (`streamystats` web/API, `streamystats-jobs` sync + migrations) on the shared
+`utilities` Postgres, which is the Immich image with pgvector and VectorChord, so upstream's
+own `vchord-postgres` container isn't needed. No volumes: all state is in the database.
+
+- **Database (once, as superuser):** create role + database `streamystats` and, in that
+  database, `CREATE EXTENSION vector; CREATE EXTENSION "uuid-ossp"; CREATE EXTENSION pg_trgm;`.
+  Upstream's migrator tries `vector` and `uuid-ossp` itself but only warns if it lacks the
+  rights, so pre-creating them avoids a half-migrated start.
+- **Secret file** `/mnt/fastpool/system/processes/secrets/streamystats-env.txt`, world-readable
+  (the images run as their own users). Upstream has no `_FILE` support, so both services
+  source it in their `command`:
+
+  ```
+  DATABASE_URL=postgresql://streamystats:<hex password>@postgres:5432/streamystats
+  SESSION_SECRET=<openssl rand -base64 32>
+  INTERNAL_API_KEY=<same value as SESSION_SECRET, or another random>
+  NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=<openssl rand -hex 16>
+  ```
+
+  Keep the password hex so it needs no URL escaping, and quote nothing: it's `source`d by `sh`.
+- Embeddings are off until a provider is configured in the Streamystats UI (any
+  OpenAI-compatible endpoint). Not configured, by choice: no extra model service.
+- Add `streamystats` to the Dagu `postgres-backup` database list.
