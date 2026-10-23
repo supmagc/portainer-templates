@@ -1,0 +1,85 @@
+name: Performer Sets
+description: Downloads photosets (PornPics, EliteBabes) and stash-box promo images for selected performers into one gallery folder per set, deduplicated across sources. See docs/stash-performer-sets.md.
+version: 0.1.0
+exec:
+  - python
+  - "{pluginDir}/performer_sets.py"
+interface: raw
+
+settings:
+  dry_run:
+    displayName: Dry run
+    description: "Only list what would be downloaded (Stash log and the report file). Default is ON."
+    type: BOOLEAN
+  download_root:
+    displayName: Download folder
+    description: "Must be a Stash library (images only). Default /data/PerformerSets."
+    type: STRING
+  include_favorites:
+    displayName: Include favorite performers
+    description: "Default is ON."
+    type: BOOLEAN
+  min_rating:
+    displayName: Include performers rated at least
+    description: "Stars, e.g. 4 or 3.5. Empty = off."
+    type: STRING
+  tags:
+    displayName: Include performers with tags
+    description: "Comma-separated tag names (sub-tags included). Empty = off."
+    type: STRING
+  sources:
+    displayName: Set sources
+    description: "Comma-separated: pornpics, elitebabes. Default both."
+    type: STRING
+  promo_images:
+    displayName: Download promo images
+    description: "Performer images from the configured stash-boxes into <performer>/_promo. Default is ON."
+    type: BOOLEAN
+  max_sets_per_source:
+    displayName: New sets per performer per source per run
+    description: "Default 50. 0 = unlimited."
+    type: NUMBER
+  min_image_size:
+    displayName: Minimum image size (px, long edge)
+    description: "Smaller images are skipped. Default 800."
+    type: NUMBER
+  request_delay:
+    displayName: Delay between requests to one site (s)
+    description: "Default 2."
+    type: NUMBER
+  dedupe_distance:
+    displayName: Duplicate distance
+    description: "Max dHash bit difference (of 64) for two images to count as the same photo. Default 4; 0 = exact copies only."
+    type: NUMBER
+  map_source_tags:
+    displayName: Copy source categories as tags
+    description: "Only categories that already exist as a Stash tag (name or alias). Default is OFF."
+    type: BOOLEAN
+  enable_hook:
+    displayName: Apply metadata when galleries are created
+    description: "Default is ON."
+    type: BOOLEAN
+
+hooks:
+  - name: gallery
+    description: Apply set.json (title, date, studio, performers, URLs) to a newly scanned set gallery.
+    triggeredBy:
+      - Gallery.Create.Post
+
+tasks:
+  - name: "Dry run: selected performers"
+    description: Always dry. Lists the selected performers and the new sets per source, writes the report file.
+    defaultArgs:
+      mode: dry_run
+  - name: "Download sets for selected performers"
+    description: Downloads new sets and promo images, then queues a scan of the changed folders (honours the Dry run setting).
+    defaultArgs:
+      mode: download
+  - name: "Apply set metadata"
+    description: Re-applies every set.json to its gallery (after adding missing studios/aliases).
+    defaultArgs:
+      mode: apply
+  - name: "Rebuild dedupe index"
+    description: Re-hashes every downloaded image and re-reads the set.json files.
+    defaultArgs:
+      mode: reindex
