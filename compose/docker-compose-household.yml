@@ -98,7 +98,98 @@ services:
       retries: 3
       start_period: 20s
 
+  homarr:
+    image: ghcr.io/homarr-labs/homarr:latest
+    container_name: homarr
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.homarr-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.homarr.rule=Host(`homarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.homarr.entrypoints=web"
+      - "traefik.http.routers.homarr.middlewares=homarr-https-redirect"
+      - "traefik.http.routers.homarr-secure.rule=Host(`homarr.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.homarr-secure.entrypoints=web-secure"
+      - "traefik.http.routers.homarr-secure.tls=true"
+      - "traefik.http.routers.homarr-secure.tls.certresolver=stepca"
+      - "traefik.http.services.homarr.loadbalancer.server.port=7575"
+    ports:
+      - ${NETWORK_INTERFACE}:7575:7575/tcp
+    secrets:
+      - homarr-encryption-key
+    volumes:
+      - /mnt/fastpool/system/household/homarr:/appdata
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - PUID=${APP_USER}
+      - PGID=${APP_GROUP}
+      - BASE_URL=https://homarr.${NETWORK_DOMAIN}
+      - SECRET_ENCRYPTION_KEY_FILE=/run/secrets/homarr-encryption-key
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.homepage-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.homepage.rule=Host(`homepage.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.homepage.entrypoints=web"
+      - "traefik.http.routers.homepage.middlewares=homepage-https-redirect"
+      - "traefik.http.routers.homepage-secure.rule=Host(`homepage.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.homepage-secure.entrypoints=web-secure"
+      - "traefik.http.routers.homepage-secure.tls=true"
+      - "traefik.http.routers.homepage-secure.tls.certresolver=stepca"
+      - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+    ports:
+      - ${NETWORK_INTERFACE}:3000:3000/tcp
+    volumes:
+      - /mnt/fastpool/system/household/homepage:/app/config
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - PUID=${APP_USER}
+      - PGID=${APP_GROUP}
+      - HOMEPAGE_ALLOWED_HOSTS=homepage.${NETWORK_DOMAIN},${NETWORK_INTERFACE}:3000
+
+  dashy:
+    image: lissy93/dashy:latest
+    container_name: dashy
+    user: ${APP_USER}:${APP_GROUP}
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.dashy-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.dashy.rule=Host(`dashy.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.dashy.entrypoints=web"
+      - "traefik.http.routers.dashy.middlewares=dashy-https-redirect"
+      - "traefik.http.routers.dashy-secure.rule=Host(`dashy.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.dashy-secure.entrypoints=web-secure"
+      - "traefik.http.routers.dashy-secure.tls=true"
+      - "traefik.http.routers.dashy-secure.tls.certresolver=stepca"
+      - "traefik.http.services.dashy.loadbalancer.server.port=8080"
+    ports:
+      - ${NETWORK_INTERFACE}:4000:8080/tcp
+    volumes:
+      - /mnt/fastpool/system/household/dashy:/app/user-data   # must contain conf.yml before first start
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - NODE_ENV=production
+
 secrets:
+  homarr-encryption-key:
+    file: /mnt/fastpool/system/processes/secrets/homarr-encryption-key.txt
   mealie-postgres-password:
     file: /mnt/fastpool/system/processes/secrets/mealie-postgres-password.txt
   vikunja-postgres-password:

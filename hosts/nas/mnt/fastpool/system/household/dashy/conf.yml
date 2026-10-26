@@ -1,0 +1,38 @@
+pageInfo:
+  title: Household
+appConfig:
+  defaultOpeningMethod: workspace
+  preventWriteToDisk: true   # this file is deployed from the repo; UI edits would be overwritten
+sections:
+  - name: Household
+    items:
+      - title: Mealie
+        url: https://mealie.household.bellecerise.local
+      - title: Vikunja
+        url: https://vikunja.household.bellecerise.local
+      - title: Homarr
+        url: https://homarr.household.bellecerise.local
+      - title: Homepage
+        url: https://homepage.household.bellecerise.local
+  - name: Watch & listen
+    items:
+      - title: Jellyfin
+        url: https://jellyfin.media.bellecerise.local
+      - title: Seerr
+        url: https://seerr.media.bellecerise.local
+      - title: Navidrome
+        url: https://navidrome.media.bellecerise.local
+      - title: Tunarr
+        url: https://tunarr.media.bellecerise.local
+  - name: Library management
+    items:
+      - title: Sonarr
+        url: https://sonarr.media.bellecerise.local
+      - title: Radarr
+        url: https://radarr.media.bellecerise.local
+      - title: Lidarr
+        url: https://lidarr.media.bellecerise.local
+      - title: Bazarr
+        url: https://bazarr.media.bellecerise.local
+      - title: Organizr
+        url: https://organizr.media.bellecerise.local

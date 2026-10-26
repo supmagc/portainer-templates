@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from ps.sources import SetRef, elitebabes, pornpics, slug_from_urls  # noqa: E402
+from ps.sources import SetRef, babepedia, elitebabes, pornpics, slug_from_urls  # noqa: E402
 
 PP_GALLERY = """
 <h1>Blonde Jane Doe poses by the pool</h1>
@@ -41,6 +41,69 @@ EB_GALLERY = """
 </ul>
 <ul class="list-gallery"><li><a href="https://www.elitebabes.com/related-set-55/"><img></a></li></ul>
 """
+
+BP_MODEL = """
+<h1 id="babename">Jane Doe</h1>
+<div id="mobile-scroll-gallery"><div id="profimg"><a href="/pics/Jane%20Doe.jpg"><img src="/pics/Jane%20Doe_thumb3.jpg"></a></div>
+ <div id="profselect"><a href="/pics/Jane%20Doe2.jpg"><img src="/pics/Jane%20Doe2_thumb3.jpg"></a></div></div>
+<div class="separate"><h2>Jane Doe Galleries</h2><div id="thumbs" class="thumbsblock">
+ <div class="thumbshot"><a href="/gallery/Jane_Doe/380682"><img data-src="/galleries-thumbs/Acme-X/01.jpg"></a></div>
+ <div class="thumbshot"><a href="/gallery/Jane_Doe/374179"><img></a></div>
+ <div class="thumbshot"><a href="/gallery/Jane_Doe/374179"><img></a></div></div></div>
+<h2>Jane Doe Photos <small>(Uploaded By Our Users)</small></h2><div class="gallery useruploads2">
+ <a href="/user-uploads/Jane Doe.jpg"><img data-src="/user-uploads-thumbs/Jane%20Doe_thumb.jpg"></a>
+ <a href="/user-uploads/Jane Doe10.jpg"><img></a></div>
+<div class="thumbshot thumbshotsmall menuthumb"><a href="/babe/Other_Babe"><img src="/pics/Other%20Babe_thumb.jpg"></a></div>
+"""
+
+BP_GALLERY = """
+<div class='gallerynavigation'><a href='/gallery/Jane_Doe/380365'>older</a></div><h1>Jane Doe and Mary Major by the pool</h1>
+<h2 class='featuring'>featuring <a href='/babe/Jane_Doe' title='Jane Doe'>Jane Doe</a> &amp; <a href='/babe/Mary_Major' title='Mary Major'class='tooltiplink'>Mary Major</a></h2>
+<a href='/galleries/Acme-JaneDoeAndMaryMajor,ByThePool/01.jpg' class='img' rel='gallery'><img src='/galleries-thumbs/Acme-JaneDoeAndMaryMajor,ByThePool/01.jpg'></a>
+<a href='/galleries/Acme-JaneDoeAndMaryMajor,ByThePool/02.jpg' class='img' rel='gallery'><img></a>
+<div id='galleryinfo'><h2>Gallery information</h2><p>Model: <a href='/babe/Jane_Doe'>Jane Doe</a></p>
+<p>Source: Fitting Room (<a href='/source/fittingroom/recent'>More Fitting Room galleries</a>)</p>
+<p id='gallerytags'><span class='gallery-tags-label'>Tags:</span><span class='gallery-tag-groups'>
+ <span class='gallery-tag-group gallery-tag-group-scene'><span class='gallery-tag-type'>Scene</span><span class='gallery-tag-items'><span class='gallery-tag'>Lingerie</span><span class='gallery-tag'>Pool</span></span></span>
+ <span class='gallery-tag-group gallery-tag-group-sponsor'><span class='gallery-tag-type'>Source</span><span class='gallery-tag-items'><span class='gallery-tag'>Fittingroom</span></span></span>
+ <span class='gallery-tag-group gallery-tag-group-model'><span class='gallery-tag-type'>Model</span><span class='gallery-tag-items'><span class='gallery-tag'>Jane Doe</span></span></span>
+</span></p><p>Published on: 29 August 2021</p><p>Views: 39,507</p></div>
+"""
+
+
+class Babepedia(unittest.TestCase):
+    def test_listing(self):
+        refs = babepedia.parse_listing(BP_MODEL)
+        self.assertEqual([(r.source_id, r.url) for r in refs], [("380682", "https://www.babepedia.com/gallery/Jane_Doe/380682"),
+                                                                ("374179", "https://www.babepedia.com/gallery/Jane_Doe/374179")])
+
+    def test_parse_set(self):
+        info = babepedia.parse_set(SetRef("babepedia", "https://www.babepedia.com/gallery/Jane_Doe/380682", "380682"), BP_GALLERY)
+        self.assertEqual(info.title, "Jane Doe and Mary Major by the pool")
+        self.assertEqual(info.models, ["Jane Doe", "Mary Major"])
+        self.assertEqual((info.studio, info.date, info.posted), ("Fitting Room", None, "2021-08-29"))
+        self.assertEqual(info.tags, ["Lingerie", "Pool"])
+        self.assertEqual([i.url for i in info.images],
+                         ["https://www.babepedia.com/galleries/Acme-JaneDoeAndMaryMajor,ByThePool/01.jpg",
+                          "https://www.babepedia.com/galleries/Acme-JaneDoeAndMaryMajor,ByThePool/02.jpg"])
+
+    def test_promo(self):
+        self.assertEqual([(stem, im.url) for stem, im in babepedia.parse_promo(BP_MODEL)], [
+            ("babepedia-pics-jane-doe", "https://www.babepedia.com/pics/Jane%20Doe.jpg"),
+            ("babepedia-pics-jane-doe2", "https://www.babepedia.com/pics/Jane%20Doe2.jpg"),
+            ("babepedia-upload-jane-doe", "https://www.babepedia.com/user-uploads/Jane%20Doe.jpg"),
+            ("babepedia-upload-jane-doe10", "https://www.babepedia.com/user-uploads/Jane%20Doe10.jpg")])
+
+    def test_model_slug(self):
+        self.assertEqual(babepedia.model_slug({"name": "Jane Doe", "urls": []}), "Jane_Doe")
+        self.assertEqual(babepedia.model_slug({"name": "J", "urls": ["https://www.babepedia.com/babe/Jane_Doe_2"]}), "Jane_Doe_2")
+
+    def test_unknown_model_redirects_to_search(self):
+        babepedia._page.clear()
+        r = type("R", (), {"url": "https://www.babepedia.com/search/Nobody", "text": "<h1>Results for 'Nobody'</h1>"})()
+        fetcher = type("F", (), {"get": lambda self, url, **kw: r})()
+        self.assertEqual(list(babepedia.list_sets({"name": "Nobody", "urls": []}, fetcher)), [])
+        self.assertEqual(list(babepedia.promo_images({"name": "Nobody", "urls": []}, fetcher)), [])
 
 
 class PornPics(unittest.TestCase):

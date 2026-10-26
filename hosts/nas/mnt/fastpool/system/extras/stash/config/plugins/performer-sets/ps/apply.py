@@ -1,7 +1,25 @@
-"""set.json → Stash gallery. Fills empty title/date/studio, adds performers/URLs/tags; never overwrites manual edits."""
+"""set.json → Stash gallery. Fills empty title/date/studio, adds performers/URLs/tags; never overwrites manual edits.
+Quality tags (solo/duo/group, high-res, soft) follow set.json and are the only tags this removes again."""
 from . import layout
 
 REVIEW_TAG = "Performer Sets: needs review"
+QUALITY_TAGS = {"solo": "Performer Sets: Solo", "duo": "Performer Sets: Duo", "group": "Performer Sets: Group",
+                "hires": "Performer Sets: High-res", "soft": "Performer Sets: Soft"}
+HIRES_EDGE = 1600
+
+
+def quality_tags(sidecar):
+    """QUALITY_TAGS keys a set gallery should carry."""
+    if sidecar.get("kind") != "set":
+        return set()
+    n = 1 + len(sidecar.get("other_performers") or [])
+    out = {"solo" if n == 1 else "duo" if n == 2 else "group"}
+    q = sidecar.get("quality") or {}
+    if (q.get("edge") or 0) >= HIRES_EDGE:
+        out.add("hires")
+    if q.get("soft"):
+        out.add("soft")
+    return out
 
 
 def plan(stash, cfg, gallery, sidecar, dry=True):
@@ -20,6 +38,14 @@ def plan(stash, cfg, gallery, sidecar, dry=True):
     tags = {t["id"] for t in gallery["tags"]}
     if cfg.map_source_tags:
         tags |= {tid for tid in (stash.lookup("tag", t) for t in sidecar.get("source_tags") or []) if tid}
+    if cfg.quality_tags:
+        wanted = quality_tags(sidecar)
+        for key, name in QUALITY_TAGS.items():
+            tid = stash.lookup("tag", name)
+            if key in wanted and tid is None and not dry:
+                tid = stash.ensure_tag(name)
+            if tid:
+                (tags.add if key in wanted else tags.discard)(tid)
 
     values = {}
     studio = sidecar.get("studio")
@@ -50,9 +76,9 @@ def plan(stash, cfg, gallery, sidecar, dry=True):
     return ({"id": gallery["id"], **values} if values else None), problems
 
 
-def apply_gallery(stash, cfg, gallery, report, dry):
+def apply_gallery(stash, cfg, gallery, report, dry, sidecar=None):
     folder = gallery["folder"]["path"]
-    sidecar = layout.read_sidecar(folder)
+    sidecar = sidecar or layout.read_sidecar(folder)
     if sidecar is None:
         report.counts["no-sidecar"] += 1
         return

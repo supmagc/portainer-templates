@@ -12,7 +12,7 @@ import traceback
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PLUGIN_DIR)
 
-from ps import apply, download  # noqa: E402
+from ps import apply, curate, download  # noqa: E402
 from ps.config import Config  # noqa: E402
 from ps.fetch import Fetcher  # noqa: E402
 from ps.index import Index  # noqa: E402
@@ -54,7 +54,7 @@ def run(stash, settings, task_args, performer_id=None):
 
     dry = True if mode == "dry_run" else cfg.dry_run
     report = Report(DEFAULT_REPORT, truncate=True, dry=dry)
-    if (mode == "reindex" or not dry) and not os.path.isdir(cfg.root):
+    if (mode in ("reindex", "curate") or not dry) and not os.path.isdir(cfg.root):
         raise SystemExit(f"download folder {cfg.root} does not exist (create it and add it as a Stash library)")
 
     if mode in ("dry_run", "download"):
@@ -62,7 +62,7 @@ def run(stash, settings, task_args, performer_id=None):
         crit = [c for c, on in (("favorites", cfg.include_favorites), (f"rating ≥ {cfg.min_rating100 / 20:g}★", cfg.min_rating100),
                                 (f"tags {', '.join(cfg.tags)}", cfg.tags)) if on]
         log("info", f"{'dry run' if dry else 'download'}: {len(performers)} performers ({' or '.join(crit) or 'no selection set'}), "
-                    f"sources: {', '.join(cfg.sources)}{', promo' if cfg.promo_images else ''}")
+                    f"sources: {', '.join(cfg.sources)}{'; promo: ' + ', '.join(cfg.promo_sources) if cfg.promo_images else ''}")
         for p in performers:
             report.emit("PERFORMER", f"{p['name']} [{p['id']}]", "selected", "debug")
         idx = Index(INDEX_PATH)
@@ -77,6 +77,12 @@ def run(stash, settings, task_args, performer_id=None):
             if i % 25 == 0:
                 log("progress", i / len(galleries))
             apply.apply_gallery(stash, cfg, g, report, dry)
+    elif mode == "curate":
+        idx = Index(INDEX_PATH)
+        try:
+            curate.curate_all(stash, cfg, idx, report, dry)
+        finally:
+            idx.close()
     elif mode == "reindex":
         idx = Index(INDEX_PATH)
         try:
@@ -97,7 +103,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--standalone", action="store_true", help="test run without Stash's stdin protocol")
     ap.add_argument("--url", default="http://localhost:9999")
-    ap.add_argument("--mode", default="dry_run", choices=["dry_run", "download", "apply", "reindex"])
+    ap.add_argument("--mode", default="dry_run", choices=["dry_run", "download", "apply", "curate", "reindex"])
     ap.add_argument("--live", action="store_true", help="standalone: really download / update galleries")
     ap.add_argument("--performer", default=None, help="standalone: only this performer id (ignores the selection settings)")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="standalone: override a plugin setting")

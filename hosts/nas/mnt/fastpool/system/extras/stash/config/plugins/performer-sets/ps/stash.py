@@ -4,7 +4,7 @@ import requests
 from .layout import norm
 
 PERFORMER_FIELDS = "id name disambiguation alias_list urls favorite rating100 stash_ids { endpoint stash_id }"
-GALLERY_FIELDS = "id title date details urls studio { id } performers { id } tags { id } folder { path }"
+GALLERY_FIELDS = "id title date details urls rating100 organized studio { id } performers { id } tags { id } folder { path }"
 
 
 class StashError(Exception):
@@ -19,6 +19,9 @@ class Stash:
         for k, v in (cookies or {}).items():
             self.session.cookies.set(k, v)
         self._names = {}
+        self._studios = {}
+        self._lineage = {}
+        self._favorite_tags = None
 
     @classmethod
     def from_connection(cls, conn):
@@ -93,6 +96,36 @@ class Stash:
             self._names[key] = hits[0]["id"] if len(hits) == 1 else None
         return self._names[key]
 
+    def studio_info(self, name):
+        """{favorite, rating100} of the studio this name resolves to (a hearted/rated parent studio counts for its
+        sub-studios), None when it isn't in Stash."""
+        sid = self.lookup("studio", name)
+        if sid is None:
+            return None
+        if sid not in self._studios:
+            q = "query($id: ID!){ findStudio(id:$id){ favorite rating100 parent_studio { favorite rating100 } } }"
+            st = self.gql(q, {"id": sid})["findStudio"] or {}
+            parent = st.get("parent_studio") or {}
+            self._studios[sid] = {"favorite": bool(st.get("favorite") or parent.get("favorite")),
+                                  "rating100": st.get("rating100") or parent.get("rating100")}
+        return self._studios[sid]
+
+    def tag_lineage(self, tid):
+        """The tag and all its parent tags (ids)."""
+        if tid not in self._lineage:
+            self._lineage[tid] = {tid}
+            parents = (self.gql("query($id: ID!){ findTag(id:$id){ parents { id } } }", {"id": tid})["findTag"] or {}).get("parents") or []
+            for p in parents:
+                self._lineage[tid] |= self.tag_lineage(p["id"])
+        return self._lineage[tid]
+
+    def favorite_tags(self):
+        """Ids of the hearted tags."""
+        if self._favorite_tags is None:
+            q = "query{ findTags(filter:{per_page:-1}, tag_filter:{favorite:true}){ tags { id } } }"
+            self._favorite_tags = {t["id"] for t in self.gql(q)["findTags"]["tags"]}
+        return self._favorite_tags
+
     def ensure_tag(self, name):
         tid = self.lookup("tag", name)
         if tid is None:
@@ -120,6 +153,10 @@ class Stash:
 
     def update_gallery(self, values):
         self.gql("mutation($i: GalleryUpdateInput!){ galleryUpdate(input:$i){ id } }", {"i": values})
+
+    def clean(self, paths):
+        return self.gql("mutation($i: CleanMetadataInput!){ metadataClean(input:$i) }",
+                        {"i": {"paths": list(paths), "dryRun": False}})["metadataClean"]
 
     def scan(self, paths):
         return self.gql("mutation($i: ScanMetadataInput!){ metadataScan(input:$i) }", {"i": {"paths": list(paths)}})["metadataScan"]

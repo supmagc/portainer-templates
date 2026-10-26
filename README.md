@@ -40,7 +40,7 @@ consumer. Values come from Portainer's per-stack environment UI, not a committed
 | `compose/docker-compose-nextcloud.yml` | `nextcloud` | Nextcloud (+ cron/web/onlyoffice/rebuilder sidecars) and its dedicated MariaDB |
 | `compose/docker-compose-utilities.yml` | `utilities` | MariaDB, PostgreSQL, Redis, RabbitMQ, Watchtower, phpMyAdmin, Dagu, chromedp, dupeguru, tdarr |
 | `compose/docker-compose-syncthing.yml` | `syncthing` | Syncthing |
-| `compose/docker-compose-household.yml` | `household` | Mealie (recipes), Vikunja (tasks), both on the shared `utilities` Postgres. Data lives under `/mnt/fastpool/system/household/` as `nas_household` (970) |
+| `compose/docker-compose-household.yml` | `household` | Mealie (recipes), Vikunja (tasks), both on the shared `utilities` Postgres; Homarr, Homepage and Dashy dashboards. Data lives under `/mnt/fastpool/system/household/` as `nas_household` (970) |
 
 ### NAS users and groups
 
@@ -84,7 +84,8 @@ Currently tracked:
   `192.168.1.110` (Traefik-Edge only shares the `networking` stack's `default` network, so
   it can't reach other stacks' containers directly) via a `<name>-public` router
   (`web-secure`, `tls.certResolver: dynu`) plus a `<name>-public-redirect` router (`web` →
-  https), since this Traefik instance has no Docker provider/labels wired up.
+  https), since this Traefik instance has no Docker provider/labels wired up. Also
+  Dashy's `household/dashy/conf.yml` (`preventWriteToDisk` is on, so edit it here, not in the UI).
 - **`openhabian`** — a native (non-Docker) Raspberry Pi install (`192.168.1.154`) running
   openHAB. Tracked files are `node_exporter`/`promtail` systemd units, Promtail's scrape
   config, and the Caddy `Caddyfile` (reverse-proxies openHAB plus `grafana.` / `influx.`

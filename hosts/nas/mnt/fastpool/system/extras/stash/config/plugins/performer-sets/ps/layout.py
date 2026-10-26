@@ -60,6 +60,16 @@ def performer_dir(root, performer):
     return posixpath.join(root, f"{_fit(name, MAX_COMPONENT_BYTES - 12)} [{pid}]")
 
 
+def performer_dirs(root):
+    """(performer id, folder) for every '<anything> [<id>]' folder under root."""
+    out = []
+    for entry in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+        m = _ID_RE.search(entry)
+        if m and os.path.isdir(posixpath.join(root, entry)):
+            out.append((m.group(1), posixpath.join(root, entry)))
+    return out
+
+
 def set_dir_name(info):
     """'<date> <studio> - <title> [<source>-<id>]'; the bracket keeps names unique per source set."""
     tail = f" [{info.source}-{info.source_id}]"

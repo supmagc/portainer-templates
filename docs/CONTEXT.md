@@ -37,8 +37,9 @@ area — it'll save you from re-discovering things the hard way.
   folders, NFO/poster/fanart, Whisparr rescan, dry-run/reconcile/orphan tasks, rollout),
   the NFO element layout, and the NFO sidecar Stash scraper (Identify fallback).
 - **[stash-performer-sets.md](stash-performer-sets.md)** — the custom `performer-sets` Stash
-  plugin: photosets (PornPics, EliteBabes) and stash-box promo images per performer, set.json
-  sidecars → gallery metadata, the dHash dedupe index, and what each source does/doesn't provide.
+  plugin: photosets (PornPics, EliteBabes, Babepedia) and promo images (stash-boxes, Babepedia) per performer, set.json
+  sidecars → gallery metadata, the dHash dedupe index, the per-performer budget/scoring + Curate
+  eviction (v0.3), and what each source does/doesn't provide.
 - **[multimedia-library-layout.md](multimedia-library-layout.md)** — the canonical on-disk
   layout for the movies/series/music libraries (verified against Emby/Jellyfin naming) and
   the cleanup categories the `library-cleanup` Dagu DAG scans for.

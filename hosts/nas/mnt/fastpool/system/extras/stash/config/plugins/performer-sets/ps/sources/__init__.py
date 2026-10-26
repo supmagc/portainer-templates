@@ -50,5 +50,5 @@ def text(node):
 
 
 def get(name):
-    from . import elitebabes, pornpics
-    return {"pornpics": pornpics, "elitebabes": elitebabes}[name]
+    from . import babepedia, elitebabes, pornpics
+    return {"pornpics": pornpics, "elitebabes": elitebabes, "babepedia": babepedia}[name]

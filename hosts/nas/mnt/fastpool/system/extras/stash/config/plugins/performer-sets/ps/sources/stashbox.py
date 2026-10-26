@@ -11,7 +11,7 @@ def box_key(box):
 
 
 def promo_images(performer, boxes, fetcher):
-    """(file stem, ImageRef) per image; stems are '<box>-<image id>' so re-runs map to the same file."""
+    """(file stem, ImageRef, referer) per image; stems are '<box>-<image id>' so re-runs map to the same file."""
     for sid in performer.get("stash_ids") or []:
         box = boxes.get(sid["endpoint"])
         if not box:
@@ -20,4 +20,4 @@ def promo_images(performer, boxes, fetcher):
                          headers={"ApiKey": box["api_key"]})
         found = ((r.json().get("data") or {}).get("findPerformer") or {}).get("images") or []
         for img in found:
-            yield f"{box_key(box)}-{img['id']}", ImageRef(img["url"], img.get("width") or 0, img.get("height") or 0)
+            yield f"{box_key(box)}-{img['id']}", ImageRef(img["url"], img.get("width") or 0, img.get("height") or 0), None

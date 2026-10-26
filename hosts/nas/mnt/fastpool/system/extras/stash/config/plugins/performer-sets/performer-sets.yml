@@ -1,6 +1,6 @@
 name: Performer Sets
-description: Downloads photosets (PornPics, EliteBabes) and stash-box promo images for selected performers into one gallery folder per set, deduplicated across sources. See docs/stash-performer-sets.md.
-version: 0.1.0
+description: Downloads photosets (PornPics, EliteBabes, Babepedia) and promo images (stash-boxes, Babepedia) for selected performers into one gallery folder per set, deduplicated across sources. See docs/stash-performer-sets.md.
+version: 0.4.0
 exec:
   - python
   - "{pluginDir}/performer_sets.py"
@@ -29,19 +29,59 @@ settings:
     type: STRING
   sources:
     displayName: Set sources
-    description: "Comma-separated: pornpics, elitebabes. Default both."
+    description: "Comma-separated: pornpics, elitebabes, babepedia. Default all."
     type: STRING
   promo_images:
     displayName: Download promo images
-    description: "Performer images from the configured stash-boxes into <performer>/_promo. Default is ON."
+    description: "Performer images into one <performer>/_promo gallery. Default is ON."
     type: BOOLEAN
+  promo_sources:
+    displayName: Promo image sources
+    description: "Comma-separated: stashbox (every configured stash-box), babepedia (profile pics + user uploads). Default all."
+    type: STRING
+  max_sets_per_performer:
+    displayName: Sets per performer
+    description: "Budget across all sources; downloads only fill free slots, Curate evicts the lowest-scored sets above it. Default 50. 0 = unlimited."
+    type: NUMBER
+  max_sets_per_studio:
+    displayName: Sets per studio per performer
+    description: "Soft cap so one studio can't take the whole budget (filled anyway when nothing else is left). Default 5. 0 = off."
+    type: NUMBER
+  exclude_studios:
+    displayName: Exclude studios
+    description: "Comma-separated; never downloaded, evicted by Curate."
+    type: STRING
+  tag_weights:
+    displayName: Tag weights
+    description: "Comma-separated name=weight, e.g. 'Lingerie=3, Outdoor, Hardcore=-3, Gangbang=x' (no weight = 2, x = exclude). Matches source categories by name, and Stash tags incl. sub-tags and aliases. Summed, capped at ±6."
+    type: STRING
+  favorite_tag_weight:
+    displayName: Hearted tag weight
+    description: "Each hearted Stash tag (incl. its sub-tags) a set matches adds this, unless Tag weights names that tag. Default 2. 0 = off."
+    type: NUMBER
+  blur_percentile:
+    displayName: Soft sets (percentile)
+    description: "Sets sharper than this share of your library pass; softer ones score lower, are tagged and new ones are skipped. Default 10. 0 = off."
+    type: NUMBER
+  quality_tags:
+    displayName: Quality tags
+    description: "Tag galleries 'Performer Sets: Solo/Duo/Group/High-res/Soft'. Default is ON."
+    type: BOOLEAN
+  evict_rating:
+    displayName: Evict galleries rated at most
+    description: "Stars. Curate deletes such galleries and never fetches them again; rated-higher or organized galleries are never evicted. Default 1. 0 = off."
+    type: STRING
   max_sets_per_source:
-    displayName: New sets per performer per source per run
+    displayName: Set pages surveyed per performer per source per run
     description: "Default 50. 0 = unlimited."
+    type: NUMBER
+  recheck_days:
+    displayName: Re-list a performer on a source after (days)
+    description: "Default 7. 0 = every run."
     type: NUMBER
   min_image_size:
     displayName: Minimum image size (px, long edge)
-    description: "Smaller images are skipped. Default 800."
+    description: "Smaller images are skipped, and so is a new set whose 3 sample images have a smaller median (for good). Default 800."
     type: NUMBER
   request_delay:
     displayName: Delay between requests to one site (s)
@@ -68,17 +108,21 @@ hooks:
 
 tasks:
   - name: "Dry run: selected performers"
-    description: Always dry. Lists the selected performers and the new sets per source, writes the report file.
+    description: Always dry. Surveys new set pages (cached in the index) and lists what would be downloaded, writes the report file.
     defaultArgs:
       mode: dry_run
   - name: "Download sets for selected performers"
-    description: Downloads new sets and promo images, then queues a scan of the changed folders (honours the Dry run setting).
+    description: Surveys new sets, downloads the best ones into free budget slots and new promo images, then queues a scan (honours the Dry run setting).
     defaultArgs:
       mode: download
   - name: "Apply set metadata"
     description: Re-applies every set.json to its gallery (after adding missing studios/aliases).
     defaultArgs:
       mode: apply
+  - name: "Curate downloaded sets"
+    description: Measures sharpness, applies the per-performer budget, exclusions and gallery ratings to what is on disk, evicts the rest, re-tags what stays and queues a Clean (honours the Dry run setting).
+    defaultArgs:
+      mode: curate
   - name: "Rebuild dedupe index"
     description: Re-hashes every downloaded image and re-reads the set.json files.
     defaultArgs:

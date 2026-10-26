@@ -8,6 +8,7 @@ from . import ImageRef, SetInfo, SetRef, slug_from_urls, text
 NAME = "pornpics"
 BASE = "https://www.pornpics.com"
 PAGE = 20
+SIZES_RELIABLE = False  # data-size under-reports the real image size: unknown for scoring
 MAX_OFFSET = 1000  # the site's own pager stops at 25 pages of 20 (P_MAX)
 _SIZE_RE = re.compile(r"^(\d+)x(\d+)$")
 
