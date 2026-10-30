@@ -1,0 +1,69 @@
+name: Scene Sets
+description: Downloads the photo set of selected scenes (rated, or with a favorite performer) from their source site (Kink — the members' zips with a session cookie —, Vixen Media Group) into one gallery folder per scene and links the gallery to the scene. See docs/stash-scene-sets.md.
+version: 0.2.0
+exec:
+  - python
+  - "{pluginDir}/scene_sets.py"
+interface: raw
+
+settings:
+  dry_run:
+    displayName: Dry run
+    description: "Only list what would be downloaded (Stash log and the report file). Default is ON."
+    type: BOOLEAN
+  download_root:
+    displayName: Download folder
+    description: "Must be a Stash library (images only). Default /data/SceneSets."
+    type: STRING
+  min_rating:
+    displayName: Include scenes rated at least
+    description: "Stars, e.g. 4 or 3.5. Empty = off."
+    type: STRING
+  include_favorite_performers:
+    displayName: Include scenes with a favorite performer
+    description: "Default is ON."
+    type: BOOLEAN
+  sources:
+    displayName: Sources
+    description: "Comma-separated: kink (kink.com/kinkmen/kinktrans shoots), vixen (Vixen, Blacked, Blacked Raw, Tushy, Tushy Raw, Deeper, Slayed, Milfy, Wifey). Default all."
+    type: STRING
+  min_image_size:
+    displayName: Minimum image size (px, long edge)
+    description: "Smaller images are skipped. Default 800."
+    type: NUMBER
+  request_delay:
+    displayName: Delay between requests to one site (s)
+    description: "Default 2."
+    type: NUMBER
+  cdp_url:
+    displayName: Chrome DevTools URL
+    description: "For sites behind a bot check (Kink). Empty = Stash's own scraper setting (Settings → Metadata providers → Chrome CDP path)."
+    type: STRING
+  kink_cookie:
+    displayName: Kink member session cookie
+    description: "The kinky.sess cookie of a browser logged in to kink.com (DevTools → Application → Cookies; 'kinky.sess=…' or a copied Set-Cookie line). Enables the members' image zips; expires after ~30 days. Empty = public photos only."
+    type: STRING
+  enable_hook:
+    displayName: Apply metadata when galleries are created
+    description: "Default is ON."
+    type: BOOLEAN
+
+hooks:
+  - name: gallery
+    description: Apply set.json (title, date, studio, performers, scene, URLs) to a newly scanned scene-set gallery.
+    triggeredBy:
+      - Gallery.Create.Post
+
+tasks:
+  - name: "Dry run: selected scenes"
+    description: Always dry. Fetches each new scene's set page and lists what would be downloaded, writes the report file.
+    defaultArgs:
+      mode: dry_run
+  - name: "Download sets for selected scenes"
+    description: Downloads the photo set of every selected scene that has none yet (and upgrades public Kink sets once a member cookie is set), then queues a scan (honours the Dry run setting).
+    defaultArgs:
+      mode: download
+  - name: "Apply set metadata"
+    description: Re-applies every set.json under the download folder to its gallery (also links hand-made scene sets to their scene).
+    defaultArgs:
+      mode: apply

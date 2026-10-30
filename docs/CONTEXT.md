@@ -40,6 +40,10 @@ area — it'll save you from re-discovering things the hard way.
   plugin: photosets (PornPics, EliteBabes, Babepedia) and promo images (stash-boxes, Babepedia) per performer, set.json
   sidecars → gallery metadata, the dHash dedupe index, the per-performer budget/scoring + Curate
   eviction (v0.3), and what each source does/doesn't provide.
+- **[stash-scene-sets.md](stash-scene-sets.md)** — the custom `scene-sets` Stash plugin: public photo sets of rated
+  scenes / scenes with a favorite performer (Kink via chromedp — members' zips with a session cookie, isolated
+  browser contexts —, Vixen Media Group via GraphQL) into `/data/SceneSets`, set.json → gallery metadata + scene
+  link, hand-made sets left alone.
 - **[multimedia-library-layout.md](multimedia-library-layout.md)** — the canonical on-disk
   layout for the movies/series/music libraries (verified against Emby/Jellyfin naming) and
   the cleanup categories the `library-cleanup` Dagu DAG scans for.
