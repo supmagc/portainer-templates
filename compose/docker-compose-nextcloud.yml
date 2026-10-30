@@ -24,8 +24,8 @@
 # 2. Only needed on a truly fresh instance (new config.php, not restored from
 #    prior storage) — these two are otherwise already set and persisted at
 #    /mnt/fastpool/system/nextcloud/app/html:
-#      docker exec -u www-data nextcloud php occ config:system:set preview_imaginary_url --value=""
-#      docker exec -u www-data nextcloud php occ config:system:set memcache.local --value="\OC\Memcache\APCu"
+#      docker exec nextcloud php occ config:system:set preview_imaginary_url --value=""
+#      docker exec nextcloud php occ config:system:set memcache.local --value="\OC\Memcache\APCu"
 # ---------------------------------------------------------------------------
 
 version: "3.3"
