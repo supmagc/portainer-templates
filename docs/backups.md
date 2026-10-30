@@ -113,6 +113,61 @@ unreadable, so `influx backup` is expected to fail until the data is on a health
 An emergency raw copy lives in `/mnt/backup/emergency/` (from `rsync -a`; files that hit
 read errors were discarded by rsync, not kept truncated).
 
+## Router and TrueNAS config exports
+
+Two Dagu DAGs (`openwrt-backup` 03:40, `truenas-config-backup` 03:45) write dated config
+exports into `rightpool/backup/automated/{openwrt,truenas}`, owned `nas_backup` (940),
+mode 600, and delete anything older than `RETENTION_DAYS` (30). Each file is first written
+as `*.partial` and checked, then renamed, so a failed night never replaces or prunes a
+good copy. A failure fails the DAG run, which fires `DaguDagRunFailed`. Both files hold
+secrets (Wi-Fi PSKs and the router's root hash; TrueNAS's secret seed, which decrypts
+every credential in its DB, including the B2 key), so they reach B2 only as safely as the
+Cloud Sync task's own encryption allows.
+
+**`openwrt-backup`** SSHes to the router as root with a key whose `authorized_keys` entry
+*forces* the command, so a leaked key can only produce a backup. The forced command streams
+`sysupgrade -k -b -` (config plus `/etc/backup/installed_packages.txt`) to stdout. That
+needs OpenWrt 24.10+ (the router runs 24.10.8): stdout streaming was broken until a March
+2024 fix, so on an older release write to `/tmp` and `cat` it instead. On 25.x (apk instead
+of opkg) check that `-k` still exists. The script rejects
+any output that isn't a gzip tar containing `etc/config/network`. The router's host key is
+pinned on first contact (`accept-new`) in `dagu/job-data/openwrt-backup/known_hosts`;
+delete that file after reflashing the router. The backup only covers files in the
+`sysupgrade -l` set (see [network.md](network.md) for the `sysctl.d` footgun). Restore:
+LuCI → System → Backup / Flash Firmware → Restore, or `sysupgrade -r <file>`.
+
+Setup, as root on `nas` (create the key **before** the first run: Docker turns a missing
+bind-mount source into an empty directory):
+
+```sh
+ssh-keygen -t ed25519 -N "" -C dagu-openwrt-backup -f /mnt/fastpool/system/processes/secrets/openwrt-backup-ssh-key
+chmod 600 /mnt/fastpool/system/processes/secrets/openwrt-backup-ssh-key
+mkdir -p /mnt/rightpool/backup/automated/openwrt /mnt/rightpool/backup/automated/truenas /mnt/fastpool/system/processes/dagu/job-data/openwrt-backup
+chown 940:940 /mnt/rightpool/backup/automated/openwrt /mnt/rightpool/backup/automated/truenas
+chmod 700 /mnt/rightpool/backup/automated/openwrt /mnt/rightpool/backup/automated/truenas
+cat /mnt/fastpool/system/processes/secrets/openwrt-backup-ssh-key.pub
+```
+
+Then on the router, append one line to `/etc/dropbear/authorized_keys`, which is in the
+default sysupgrade preserve set. Replace `<pubkey>` with the `.pub` contents:
+
+```
+command="sysupgrade -k -b - 2>/dev/null",no-port-forwarding,no-pty <pubkey>
+```
+
+The options go *before* the key type, on one line, with no spaces after the commas.
+`logread -e dropbear` shows why a key was refused.
+
+**`truenas-config-backup`** produces the same tar as System → General Settings → Manage
+Configuration → Download File *with* the secret seed: `freenas-v1.db` plus `pwenc_secret`.
+It bind-mounts the host's `/data` read-only, copies the live DB with `sqlite3 .backup`
+(consistent while the middleware writes) and requires `PRAGMA integrity_check` = `ok` on
+the copy. It uses no API key: Dagu's `docker.sock` is already root-equivalent on `nas`, so
+reading `/data` adds no new exposure. Restore by uploading the `.tar` in that same
+Manage Configuration dialog, on the same or a newer TrueNAS version. The read-only open
+works (confirmed 2026-10-30); if a TrueNAS upgrade ever switches the DB to WAL journaling
+and it starts failing, mount `/data` read-write.
+
 ## SD-card mirroring guard rails
 
 openHABian's stock `sdrawcopy` / `sdrsync` systemd timers mirror the running SD card to a
@@ -155,9 +210,9 @@ Cross-cutting layers the rows below refer to:
 
 | Item | What to protect | Priority | How | Status |
 |---|---|---|---|---|
-| TrueNAS config | Pool layout, users/groups, shares, network, Snapshot/Cloud Sync task definitions (incl. the B2 key) | Critical | System Settings → General → Save Config on a schedule, written to a path that reaches B2; the export holds secrets, so keep it private | **Gap** — not in git by design, no export seen |
+| TrueNAS config | Pool layout, users/groups, shares, network, Snapshot/Cloud Sync task definitions (incl. the B2 key) | Critical | Dagu `truenas-config-backup`, 03:45 daily → `rightpool/backup/automated/truenas`, 30-day retention ([above](#router-and-truenas-config-exports)) | **Done** — deployed, first run OK 2026-10-30; offsite via Cloud Sync |
 | ZFS snapshots | Point-in-time rollback of the three pools | High | Periodic Snapshot Tasks per dataset | **Partial** — tasks exist (monitored by `snapshot-tasks-metrics.sh`); dataset coverage unverified |
-| Cloud Sync → B2 | Offsite copy | Critical | Tasks covering `leftpool`, `fastpool/system` and `rightpool/backup/automated`; bucket versioning or copy-with-retention so a local delete/encrypt isn't mirrored | **Partial** — `fastpool` config only is confirmed; `leftpool` and versioning unverified |
+| Cloud Sync → B2 | Offsite copy | Critical | Tasks covering `leftpool`, `fastpool/system` and `rightpool/backup/automated`; bucket versioning or copy-with-retention so a local delete/encrypt isn't mirrored | **Partial** — `fastpool` config and all of `rightpool/backup` (2026-10-30) confirmed; `leftpool` and versioning unverified |
 | Portainer | Own DB: stack definitions and the per-stack environment values typed in its UI (no `.env` exists) | Critical | Portainer's own backup (Settings → Backup), or copy its data dir while stopped, into `rightpool/backup/automated/portainer` | **Gap** — without it the compose files in git can't be redeployed as-is |
 | Secrets dir (`processes/secrets/*.txt`) | Only copy of DB passwords/API keys; deliberately kept out of git | Critical | Copy into `rightpool/backup/automated/secrets` (owner `nas_backup`, mode 600), or a password manager | **Gap** |
 | Dagu `ref:` secrets | Secrets set via Dagu's UI/API live in its own state, not in git | High | Re-enterable from the secrets dir; keep a list of the ref names (`mariadb-backup/db-password`, `postgres-backup/db-password`, `trailer-fetch/*`, `themerr-fetch/*`, …) | **Gap** — list not kept |
@@ -167,7 +222,7 @@ Cross-cutting layers the rows below refer to:
 | Traefik (internal) `processes/traefik/stepca` | ACME cert state from step-ca | Low | Re-issued automatically | **N/A** |
 | Traefik-Edge `acme/` | Let's Encrypt (dynu DNS) certs | Low | Re-issued automatically; copy only to dodge LE rate limits after a rebuild | **N/A** |
 | Traefik-Edge `dynamic/*.yml` | WAN routing | — | Git | **Done** |
-| OpenWrt router | `/etc/config/*` (firewall zones, VLANs, SQM, SNMP/exporter), package list | High | LuCI → System → Backup, or `sysupgrade -b`, kept in `rightpool/backup/automated/openwrt`; check custom files are in the `sysupgrade -l` set (see [network.md](network.md)) | **Gap** — only setup notes in the gitignored scratchpad |
+| OpenWrt router | `/etc/config/*` (firewall zones, VLANs, SQM, SNMP/exporter), package list | High | Dagu `openwrt-backup`, 03:40 daily, `sysupgrade -k -b` over a forced-command SSH key → `rightpool/backup/automated/openwrt`, 30-day retention ([above](#router-and-truenas-config-exports)); check custom files are in the `sysupgrade -l` set (see [network.md](network.md)) | **Done** — deployed, first run OK 2026-10-30; offsite via Cloud Sync |
 | Fritzbox (VDSL2 modem) | Line/bridge settings | Medium | Fritz!Box → System → Backup | **Gap** (unverified) |
 | Managed switch / APs | VLAN and SSID config | Medium | Vendor config export | **Gap** (unverified) |
 
@@ -231,7 +286,7 @@ Cross-cutting layers the rows below refer to:
 
 | Item | What to protect | Priority | How | Status |
 |---|---|---|---|---|
-| MariaDB | `digikam`, `nextcloud`, `onlyoffice` (`spotweb` excluded, see above) | Critical | Dagu `mariadb-backup`, 04:00 daily, gzip dumps to `rightpool/backup/automated/mariadb`, 7-day retention | **Done** — offsite only if Cloud Sync covers `rightpool/backup` |
+| MariaDB | `digikam`, `nextcloud`, `onlyoffice` (`spotweb` excluded, see above) | Critical | Dagu `mariadb-backup`, 04:00 daily, gzip dumps to `rightpool/backup/automated/mariadb`, 7-day retention | **Done** — offsite via Cloud Sync |
 | PostgreSQL | `mealie`, `vikunja` (+ `bitmagnet`, rebuildable) | High | Dagu `postgres-backup`, 04:30 daily, `pg_dump -Fc` to `rightpool/backup/automated/postgres`, 7-day retention | **Partial** — committed 2026-10-07, deployment unverified |
 | Dagu | DAG files and scripts; run history/state | Low | Git for definitions; history is disposable | **Done** |
 | Grafana (`processes/grafana/data`) | `grafana.db`: users, UI-managed contact points and notification policy, API keys | Medium | Copy `grafana.db` (SQLite `.backup`) → `rightpool/backup/automated/grafana`. Provisioned dashboards/rules/datasources are in git | **Gap** — contact points/policy exist only here |

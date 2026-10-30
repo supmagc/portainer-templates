@@ -1,0 +1,32 @@
+params:
+  - name: ROUTER_HOST
+    default: 192.168.1.1
+  - name: OUTPUT_UID
+    default: 940
+  - name: OUTPUT_GID
+    default: 940
+  - name: RETENTION_DAYS
+    default: 30
+
+schedule: "40 3 * * *"
+steps:
+  - id: backup
+    action: docker.run
+    with:
+      image: alpine:3.22
+      pull: missing
+      auto_remove: true
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/openwrt-backup.sh:/openwrt-backup.sh:ro
+        - /mnt/fastpool/system/processes/secrets/openwrt-backup-ssh-key:/ssh/id_ed25519:ro
+        - /mnt/fastpool/system/processes/dagu/job-data/openwrt-backup:/state
+        - /mnt/rightpool/backup/automated/openwrt:/backup
+      container:
+        env:
+          - TZ=Europe/Brussels
+          - ROUTER_HOST=${params.ROUTER_HOST}
+          - BACKUP_TARGET=/backup
+          - RETENTION_DAYS=${params.RETENTION_DAYS}
+          - OUTPUT_UID=${params.OUTPUT_UID}
+          - OUTPUT_GID=${params.OUTPUT_GID}
+      command: sh /openwrt-backup.sh

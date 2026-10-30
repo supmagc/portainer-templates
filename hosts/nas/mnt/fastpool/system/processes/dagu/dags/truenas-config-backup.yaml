@@ -1,0 +1,28 @@
+params:
+  - name: OUTPUT_UID
+    default: 940
+  - name: OUTPUT_GID
+    default: 940
+  - name: RETENTION_DAYS
+    default: 30
+
+schedule: "45 3 * * *"
+steps:
+  - id: backup
+    action: docker.run
+    with:
+      image: alpine:3.22
+      pull: missing
+      auto_remove: true
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/truenas-config-backup.sh:/truenas-config-backup.sh:ro
+        - /data:/truenas-data:ro
+        - /mnt/rightpool/backup/automated/truenas:/backup
+      container:
+        env:
+          - TZ=Europe/Brussels
+          - BACKUP_TARGET=/backup
+          - RETENTION_DAYS=${params.RETENTION_DAYS}
+          - OUTPUT_UID=${params.OUTPUT_UID}
+          - OUTPUT_GID=${params.OUTPUT_GID}
+      command: sh /truenas-config-backup.sh
