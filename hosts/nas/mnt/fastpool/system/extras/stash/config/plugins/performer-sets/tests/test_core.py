@@ -216,6 +216,44 @@ class Curate(unittest.TestCase):
         self.assertEqual(curate.TagWeights([], stash, 0.0).match(["Stockings"]), (False, 0.0))
 
 
+class StashSession(unittest.TestCase):
+    def test_carries_the_reissued_session_cookie(self):
+        import http.server
+        import json
+        import threading
+        from ps import stash as stash_mod
+        seen = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                seen.append(self.headers.get("Cookie"))
+                body = json.dumps({"data": {"version": {"version": "x"}}}).encode()
+                self.send_response(200)
+                self.send_header("Set-Cookie", f"session=v{len(seen)}; Path=/; HttpOnly")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            s = stash_mod.Stash(f"http://localhost:{srv.server_port}", cookies={"session": "v0"})
+            s.gql("{ version { version } }")
+            s.gql("{ version { version } }")
+            s.keepalive()  # recent request: no extra call
+            s._last -= stash_mod.KEEPALIVE + 1
+            s.keepalive()
+            self.assertEqual(seen, ["session=v0", "session=v1", "session=v2"])
+            s.session.close()
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+
 class FakeStash:
     def __init__(self, known):
         self.known = known
@@ -226,6 +264,9 @@ class FakeStash:
 
     def favorite_tags(self):
         return set()
+
+    def keepalive(self):
+        pass
 
     def ensure_tag(self, name):
         self.created.append(name)
@@ -484,7 +525,8 @@ class DownloadFlow(unittest.TestCase):
         self.run_set(solo, blobs)
         _, pdir = self.run_set(group, blobs)
         stash = type("S", (), {"galleries_under": lambda self, root: [], "studio_info": lambda self, n: None,
-                               "clean": lambda self, paths: "42", "favorite_tags": lambda self: set()})()
+                               "clean": lambda self, paths: "42", "favorite_tags": lambda self: set(),
+                               "keepalive": lambda self: None})()
         report = Report()
         curate.curate_all(stash, self.cfg, self.idx, report, dry=True)
         self.assertEqual((report.counts["EVICT"], len(os.listdir(pdir))), (1, 2))

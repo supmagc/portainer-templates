@@ -1,7 +1,11 @@
 """Minimal Stash GraphQL client (requests) plus cached name → id lookups."""
+import time
+
 import requests
 
 from .layout import norm
+
+KEEPALIVE = 600  # seconds; the session cookie expires after Stash's max_session_age (default 1 h) without requests
 
 PERFORMER_FIELDS = "id name disambiguation alias_list urls favorite rating100 stash_ids { endpoint stash_id }"
 GALLERY_FIELDS = "id title date details urls rating100 organized studio { id } performers { id } tags { id } folder { path }"
@@ -16,8 +20,8 @@ class Stash:
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update(headers or {})
-        for k, v in (cookies or {}).items():
-            self.session.cookies.set(k, v)
+        self.cookies = dict(cookies or {})
+        self._last = time.monotonic()
         self._names = {}
         self._studios = {}
         self._lineage = {}
@@ -33,12 +37,22 @@ class Stash:
         return cls(f"{conn.get('Scheme', 'http')}://{host}:{conn.get('Port', 9999)}", cookies=cookies)
 
     def gql(self, query, variables=None):
-        r = self.session.post(f"{self.base_url}/graphql", json={"query": query, "variables": variables or {}}, timeout=60)
+        r = self.session.post(f"{self.base_url}/graphql", json={"query": query, "variables": variables or {}},
+                              cookies=self.cookies, timeout=60)
+        # Stash re-issues the session cookie on every request: carry the fresh one, never the stale original
+        self.session.cookies.clear()
+        self.cookies.update(r.cookies.get_dict())
+        self._last = time.monotonic()
         r.raise_for_status()
         body = r.json()
         if body.get("errors"):
             raise StashError("; ".join(e.get("message", "?") for e in body["errors"]))
         return body["data"]
+
+    def keepalive(self):
+        """Call from long loops that don't talk to Stash, so the session doesn't expire."""
+        if time.monotonic() - self._last > KEEPALIVE:
+            self.gql("{ version { version } }")
 
     def plugin_settings(self, plugin_id):
         data = self.gql("{ configuration { plugins } }")

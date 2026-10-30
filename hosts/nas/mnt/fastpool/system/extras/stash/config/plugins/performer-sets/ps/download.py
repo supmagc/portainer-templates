@@ -171,6 +171,8 @@ class Downloader:
             self.report.emit("BLOCKED", who, f"{src.NAME} disabled for this run: {exc}", "warning")
 
     def survey_one(self, p, src, ref, keys, who):
+        if self.stash:
+            self.stash.keepalive()
         info = src.get_set(ref, self.fetcher)
         if not any(layout.norm(m) in keys for m in info.models):
             self.idx.mark(ref.url, "rejected")
@@ -212,6 +214,8 @@ class Downloader:
         """'done' | 'upgraded' | 'duplicate' | 'low-quality' | 'error' (only 'done' takes a free slot)."""
         if info.source in self.blocked:
             return "error"
+        if self.stash:
+            self.stash.keepalive()
         try:
             return self.one_set(p, pdir, info, keys, who)
         except Blocked as exc:

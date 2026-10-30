@@ -168,6 +168,11 @@ does, then reports `WOULD-GET` per free slot — no images), **Download sets for
 sharpness into the index happens either way),
 **Apply set metadata**, **Rebuild dedupe index**. The report goes to `/config/performer-sets-report.txt`.
 
+**Session expiry**: a task talks to Stash with the session cookie Stash hands the plugin, which expires
+after `max_session_age` (default 1 h) without a request — the first Curate's hour-long sharpness pass
+hit a 401 on its next query. `ps/stash.py` therefore carries the cookie Stash re-issues on every
+response and the long loops call `keepalive()` (a cheap query when idle > 10 min).
+
 ## Rollout
 
 1. `requirements.txt` adds Pillow; stash-s6's `/opt/entrypoint.sh` collects every plugin's

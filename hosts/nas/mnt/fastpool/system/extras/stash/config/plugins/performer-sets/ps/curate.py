@@ -235,6 +235,7 @@ def curate_all(stash, cfg, idx, report, dry):
     dirs = layout.performer_dirs(cfg.root)
     for n, (_pid, pdir) in enumerate(dirs, 1):
         log("progress", (n - 1) / max(len(dirs), 1) / 2)
+        stash.keepalive()
         analyze(pdir, idx, report)
     soft_below = idx.soft_threshold(cfg.blur_percentile)
     report.emit("SOFT-BELOW", None, f"sharpness {soft_below:g} ({cfg.blur_percentile:g}th percentile of set medians)"
