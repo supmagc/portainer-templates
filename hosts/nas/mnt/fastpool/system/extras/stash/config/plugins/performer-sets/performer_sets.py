@@ -13,10 +13,11 @@ PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PLUGIN_DIR)
 
 from ps import apply, curate, download  # noqa: E402
-from ps.config import Config  # noqa: E402
+from ps.config import ALL_SOURCES, Config  # noqa: E402
 from ps.fetch import Fetcher  # noqa: E402
 from ps.index import Index  # noqa: E402
 from ps.report import Report, log  # noqa: E402
+from ps.sources import page_hosts  # noqa: E402
 from ps.stash import Stash  # noqa: E402
 
 PLUGIN_ID = "performer-sets"
@@ -49,7 +50,7 @@ def run(stash, settings, task_args, performer_id=None):
         gallery = stash.find_gallery(hook["id"])
         folder = ((gallery or {}).get("folder") or {}).get("path") or ""
         if folder.startswith(cfg.root + "/"):
-            apply.apply_gallery(stash, cfg, gallery, Report(dry=False), dry=False)
+            apply.apply_gallery(stash, gallery, Report(dry=False), dry=False)
         return "ok"
 
     dry = True if mode == "dry_run" else cfg.dry_run
@@ -67,7 +68,8 @@ def run(stash, settings, task_args, performer_id=None):
             report.emit("PERFORMER", f"{p['name']} [{p['id']}]", "selected", "debug")
         idx = Index(INDEX_PATH)
         try:
-            download.Downloader(stash, cfg, Fetcher(cfg.delay), idx, report, dry).run(performers)
+            fetcher = Fetcher(cfg.delay, page_hosts=page_hosts(ALL_SOURCES))
+            download.Downloader(stash, cfg, fetcher, idx, report, dry).run(performers)
         finally:
             idx.close()
     elif mode == "apply":
@@ -76,7 +78,7 @@ def run(stash, settings, task_args, performer_id=None):
         for i, g in enumerate(galleries, 1):
             if i % 25 == 0:
                 log("progress", i / len(galleries))
-            apply.apply_gallery(stash, cfg, g, report, dry)
+            apply.apply_gallery(stash, g, report, dry)
     elif mode == "curate":
         idx = Index(INDEX_PATH)
         try:

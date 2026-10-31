@@ -1,6 +1,6 @@
 name: Performer Sets
 description: Downloads photosets (PornPics, EliteBabes, Babepedia) and promo images (stash-boxes, Babepedia) for selected performers into one gallery folder per set, deduplicated across sources. See docs/stash-performer-sets.md.
-version: 0.4.0
+version: 0.5.0
 exec:
   - python
   - "{pluginDir}/performer_sets.py"
@@ -41,7 +41,7 @@ settings:
     type: STRING
   max_sets_per_performer:
     displayName: Sets per performer
-    description: "Budget across all sources; downloads only fill free slots, Curate evicts the lowest-scored sets above it. Default 50. 0 = unlimited."
+    description: "Budget across all sources; a better candidate replaces the lowest-scored set once it is downloaded. Default 50. 0 = unlimited."
     type: NUMBER
   max_sets_per_studio:
     displayName: Sets per studio per performer
@@ -59,14 +59,14 @@ settings:
     displayName: Hearted tag weight
     description: "Each hearted Stash tag (incl. its sub-tags) a set matches adds this, unless Tag weights names that tag. Default 2. 0 = off."
     type: NUMBER
+  ideal_set_size:
+    displayName: Ideal set size (images)
+    description: "Sets of this many images score best (+2); every halving or doubling away from it costs 2, down to -3 (e.g. 40: 20 or 80 = 0, 10 or 160 = -2). Default 40. 0 = off."
+    type: NUMBER
   blur_percentile:
     displayName: Soft sets (percentile)
     description: "Sets sharper than this share of your library pass; softer ones score lower, are tagged and new ones are skipped. Default 10. 0 = off."
     type: NUMBER
-  quality_tags:
-    displayName: Quality tags
-    description: "Tag galleries 'Performer Sets: Solo/Duo/Group/High-res/Soft'. Default is ON."
-    type: BOOLEAN
   evict_rating:
     displayName: Evict galleries rated at most
     description: "Stars. Curate deletes such galleries and never fetches them again; rated-higher or organized galleries are never evicted. Default 1. 0 = off."
@@ -85,16 +85,12 @@ settings:
     type: NUMBER
   request_delay:
     displayName: Delay between requests to one site (s)
-    description: "Default 2."
+    description: "Pages, and images served by the site itself (Babepedia). Image-only servers (cdni.pornpics.com, cdn.elitebabes.com, stash-box CDNs) use 1 s, or this if lower. Default 2."
     type: NUMBER
   dedupe_distance:
     displayName: Duplicate distance
     description: "Max dHash bit difference (of 64) for two images to count as the same photo. Default 4; 0 = exact copies only."
     type: NUMBER
-  map_source_tags:
-    displayName: Copy source categories as tags
-    description: "Only categories that already exist as a Stash tag (name or alias). Default is OFF."
-    type: BOOLEAN
   enable_hook:
     displayName: Apply metadata when galleries are created
     description: "Default is ON."
@@ -108,11 +104,11 @@ hooks:
 
 tasks:
   - name: "Dry run: selected performers"
-    description: Always dry. Surveys new set pages (cached in the index) and lists what would be downloaded, writes the report file.
+    description: Always dry. Surveys new set pages (cached in the index) and lists what would be downloaded and which sets it would replace, writes the report file.
     defaultArgs:
       mode: dry_run
   - name: "Download sets for selected performers"
-    description: Surveys new sets, downloads the best ones into free budget slots and new promo images, then queues a scan (honours the Dry run setting).
+    description: Surveys new sets, downloads the ones that beat the sets on disk (evicting each one pushed out of the budget only after its replacement is downloaded) and new promo images, then queues a scan and a Clean (honours the Dry run setting). Rerun to keep improving.
     defaultArgs:
       mode: download
   - name: "Apply set metadata"
@@ -120,7 +116,7 @@ tasks:
     defaultArgs:
       mode: apply
   - name: "Curate downloaded sets"
-    description: Measures sharpness, applies the per-performer budget, exclusions and gallery ratings to what is on disk, evicts the rest, re-tags what stays and queues a Clean (honours the Dry run setting).
+    description: Maintenance for every performer folder (selected or not). Measures sharpness, applies the budget, exclusions and gallery ratings to what is on disk (no candidates), evicts the rest, re-applies set.json to what stays and queues a Clean (honours the Dry run setting).
     defaultArgs:
       mode: curate
   - name: "Rebuild dedupe index"

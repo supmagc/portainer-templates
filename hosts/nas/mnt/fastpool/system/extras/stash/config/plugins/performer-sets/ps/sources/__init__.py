@@ -1,6 +1,7 @@
 """Set sources. Each yields SetRefs for a performer (listing only) and turns one into a SetInfo (set page)."""
 import re
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 
 @dataclass
@@ -52,3 +53,8 @@ def text(node):
 def get(name):
     from . import babepedia, elitebabes, pornpics
     return {"pornpics": pornpics, "elitebabes": elitebabes, "babepedia": babepedia}[name]
+
+
+def page_hosts(names):
+    """Hosts the sources scrape pages from (their images there get the full request delay)."""
+    return {urlsplit(get(n).BASE).hostname for n in names}

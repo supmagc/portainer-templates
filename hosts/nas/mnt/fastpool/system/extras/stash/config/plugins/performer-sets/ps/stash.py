@@ -26,6 +26,7 @@ class Stash:
         self._studios = {}
         self._lineage = {}
         self._favorite_tags = None
+        self._genders = None
 
     @classmethod
     def from_connection(cls, conn):
@@ -132,6 +133,16 @@ class Stash:
             for p in parents:
                 self._lineage[tid] |= self.tag_lineage(p["id"])
         return self._lineage[tid]
+
+    def is_female(self, name):
+        """Whether the name/alias belongs to exactly one Stash gender, FEMALE (one query for all performers)."""
+        if self._genders is None:
+            q = "query{ findPerformers(filter:{per_page:-1}){ performers { name alias_list gender } } }"
+            self._genders = {}
+            for p in self.gql(q)["findPerformers"]["performers"]:
+                for n in [p["name"], *(p["alias_list"] or [])]:
+                    self._genders.setdefault(norm(n), set()).add(p.get("gender"))
+        return self._genders.get(norm(name)) == {"FEMALE"}
 
     def favorite_tags(self):
         """Ids of the hearted tags."""

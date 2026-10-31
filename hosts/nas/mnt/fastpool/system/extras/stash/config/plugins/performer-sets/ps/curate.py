@@ -1,9 +1,11 @@
 """Per-performer set budget: score downloaded sets and surveyed candidates the same way, keep the best.
 
-Downloads only fill free slots; the Curate task measures sharpness, evicts downloaded sets that fall outside the
-budget and re-tags the rest."""
+Downloads replace the lowest sets with better candidates (evicting only after the new set is on disk); the Curate
+task measures sharpness, evicts downloaded sets that are excluded, rated out or over the budget (every performer
+folder, selected or not) and re-applies set.json to the rest."""
 import collections
 import io
+import math
 import os
 import posixpath
 import statistics
@@ -16,6 +18,7 @@ from .report import log
 from .sources import get as get_source
 
 TAG_SCORE_CAP = 6  # tag weights add up, but never beyond ±6 (the other factors still matter)
+SIZE_SCORE_PEAK, SIZE_SCORE_FLOOR = 2.0, -3.0  # image count: ideal_set_size scores +2, far too small or too large -3
 
 
 @dataclass
@@ -36,6 +39,7 @@ class Item:
     set_id: int = None
     info: object = None  # SetInfo (candidate)
     score: float = None
+    names: list = field(default_factory=list)  # credited models, for their genders
 
 
 def image_files(folder):
@@ -76,7 +80,8 @@ def kept_items(pdir, idx, galleries=None, soft_below=None):
         out.append(Item("kept", folder, sc.get("studio"), 1 + len(sc.get("other_performers") or []), len(files), edge,
                         sc.get("source_tags") or [], {t["id"] for t in g.get("tags") or []}, sharp,
                         is_soft(sharp, soft_below), g.get("rating100"), bool(g.get("organized")),
-                        sum(os.path.getsize(f) for f in files), set_id))
+                        sum(os.path.getsize(f) for f in files), set_id,
+                        names=[sc.get("performer") or "", *(sc.get("other_performers") or [])]))
     return out
 
 
@@ -84,7 +89,7 @@ def candidate_item(info):
     sizes = getattr(get_source(info.source), "SIZES_RELIABLE", True)
     edges = [max(i.width, i.height) for i in info.images if i.width and i.height] if sizes else []
     return Item("candidate", info.url, info.studio, len(info.models) or 1, len(info.images),
-                int(statistics.median(edges)) if edges else 0, info.tags or [], info=info)
+                int(statistics.median(edges)) if edges else 0, info.tags or [], info=info, names=list(info.models))
 
 
 def analyze(pdir, idx, report):
@@ -134,10 +139,30 @@ class TagWeights:
         return False, max(-TAG_SCORE_CAP, min(TAG_SCORE_CAP, sum(hits)))
 
 
+def model_score(models, females):
+    """Solo +3; else min(4, |M - F| / 2 + 1 when fewer women than men + (models - 2) / 2), -1 without women.
+    M = every model not female in Stash (male, trans, no gender, not in Stash)."""
+    if models <= 1:
+        return 3.0
+    males = models - females
+    s = min(4.0, abs(males - females) / 2 + (1.0 if females < males else 0.0) + (models - 2) / 2)
+    return s - (1.0 if females == 0 else 0.0)
+
+
+def size_score(images, ideal):
+    """+2 at the ideal image count, 2 less per halving or doubling away from it, never below -3; ideal 0 = off."""
+    if not ideal:
+        return 0.0
+    if images <= 0:
+        return SIZE_SCORE_FLOOR
+    return max(SIZE_SCORE_FLOOR, SIZE_SCORE_PEAK - SIZE_SCORE_PEAK * abs(math.log2(images / ideal)))
+
+
 class Scorer:
-    def __init__(self, cfg, stash=None, studio_info=None):
+    def __init__(self, cfg, stash=None, studio_info=None, is_female=None):
         self.cfg = cfg
         self.studio_info = studio_info or (stash.studio_info if stash else (lambda _name: None))
+        self.is_female = is_female or (stash.is_female if stash else (lambda _name: False))
         self.tags = TagWeights(cfg.tag_weights, stash, cfg.favorite_tag_weight)
 
     def score(self, item):
@@ -148,8 +173,8 @@ class Scorer:
         excluded, tag_score = self.tags.match(item.tags, item.tag_ids)
         if excluded:
             return None
-        s = {1: 3.0, 2: 1.0, 3: 0.0}.get(item.models, -2.0)
-        s += -3.0 if item.images < 8 else 1.0 if item.images >= 12 else 0.0
+        s = model_score(item.models, min(item.models, sum(map(self.is_female, item.names))))
+        s += size_score(item.images, self.cfg.ideal_set_size)
         if item.long_edge:
             s += next(v for edge, v in ((2000, 3.0), (1600, 2.0), (1200, 0.0), (1000, -1.0), (0, -3.0)) if item.long_edge >= edge)
         if item.soft:
@@ -230,7 +255,7 @@ def evict(item, idx, report, dry, who):
 
 
 def curate_all(stash, cfg, idx, report, dry):
-    """Apply the budget to every performer folder on disk (selected or not), then re-tag the sets that stay."""
+    """Apply the budget to every performer folder on disk (selected or not), then re-apply set.json to the rest."""
     galleries = {g["folder"]["path"]: g for g in stash.galleries_under(cfg.root)}
     dirs = layout.performer_dirs(cfg.root)
     for n, (_pid, pdir) in enumerate(dirs, 1):
@@ -242,29 +267,30 @@ def curate_all(stash, cfg, idx, report, dry):
                 if soft_below is not None else "not enough measured sets yet: blur check off")
     scorer = Scorer(cfg, stash)
     evicted = freed = 0
-    for n, (pid, pdir) in enumerate(dirs, 1):
+    for n, (_pid, pdir) in enumerate(dirs, 1):
         log("progress", 0.5 + (n - 1) / max(len(dirs), 1) / 2)
         who = posixpath.basename(pdir)
         kept = kept_items(pdir, idx, galleries, soft_below)
-        cands = [candidate_item(info) for status, info in idx.candidates(pid) if status is None]
-        _chosen, out, queued = plan(kept + cands, cfg, scorer)
+        _chosen, out, _queued = plan(kept, cfg, scorer)  # candidates only replace sets once downloaded (Downloader.fill)
         for item in sorted(out, key=lambda i: i.key):
             evict(item, idx, report, dry, who)
         evicted += len(out)
         freed += sum(i.size for i in out)
         report.emit("CURATE", who, f"keep {len(kept) - len(out)} of {len(kept)} sets, evict {len(out)} "
-                                   f"({sum(i.size for i in out) / 1e6:.0f} MB), {len(queued)} better candidates queued")
+                                   f"({sum(i.size for i in out) / 1e6:.0f} MB)")
         gone = {id(i) for i in out}
         for item in kept:
             if id(item) not in gone:
-                retag(stash, cfg, item, galleries.get(item.key), report, dry)
+                retag(stash, item, galleries.get(item.key), report, dry)
     report.emit("FREED", None, f"{evicted} sets, {freed / 1e9:.2f} GB{' (would be)' if dry else ''}")
+    if not dry and (pruned := layout.prune_empty_dirs(cfg.root)):
+        report.emit("PRUNED", None, f"{pruned} empty folder(s)")
     if evicted and not dry:
         report.emit("CLEAN", None, f"queued clean job {stash.clean([cfg.root])} for {cfg.root}")
 
 
-def retag(stash, cfg, item, gallery, report, dry):
-    """Store the measured quality in set.json and apply it (quality tags) to the gallery."""
+def retag(stash, item, gallery, report, dry):
+    """Store the measured quality in set.json and re-apply set.json to the gallery."""
     sc = layout.read_sidecar(item.key) or {}
     quality = {"edge": item.long_edge, "sharpness": item.sharpness, "soft": item.soft}
     if sc.get("quality") != quality:
@@ -272,4 +298,4 @@ def retag(stash, cfg, item, gallery, report, dry):
         if not dry:
             layout.write_sidecar(item.key, sc)
     if gallery:
-        apply.apply_gallery(stash, cfg, gallery, report, dry, sidecar=sc)
+        apply.apply_gallery(stash, gallery, report, dry, sidecar=sc)

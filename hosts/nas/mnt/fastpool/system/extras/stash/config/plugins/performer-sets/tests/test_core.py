@@ -49,9 +49,32 @@ class Layout(unittest.TestCase):
             self.assertEqual(layout.performer_dir(root, {"id": "7", "name": "New"}), f"{root}/Old Name [7]")
             self.assertEqual(layout.performer_dir(root, {"id": "17", "name": "A/B"}), f"{root}/A-B [17]")
 
+    def test_prune_empty_dirs(self):
+        with tempfile.TemporaryDirectory() as root:
+            for d in ("A [1]/_promo", "B [2]/Set [x-1]", "C [3]/Partial [x-2]", "D [4]/Set [x-3]"):
+                os.makedirs(os.path.join(root, d))
+            open(os.path.join(root, "C [3]/Partial [x-2]", layout.SIDECAR), "w").close()
+            open(os.path.join(root, "D [4]", "001.jpg"), "w").close()
+            self.assertEqual(layout.prune_empty_dirs(root), 5)  # A/_promo, A, B/Set, B and D's empty set
+            self.assertEqual(sorted(os.listdir(root)), ["C [3]", "D [4]"])
+            self.assertEqual(os.listdir(os.path.join(root, "D [4]")), ["001.jpg"])
+
     def test_norm(self):
         self.assertEqual(layout.norm("Zoë  D'Arc"), layout.norm("zoe darc"))
         self.assertEqual(layout.performer_keys({"name": "Jane Doe", "alias_list": ["J. Doe", ""]}), {"janedoe", "jdoe"})
+
+
+class FetchTest(unittest.TestCase):
+    def test_image_delay_only_for_image_only_hosts(self):
+        from ps.fetch import Fetcher
+        sleeps = []
+        f = Fetcher(7.0, sleep=sleeps.append, clock=lambda: 0.0, page_hosts={"www.babepedia.com"})
+        f.session.request = lambda *a, **kw: type("R", (), {"status_code": 200, "text": "", "raise_for_status": lambda self: None})()
+        for url, image in (("https://cdni.pornpics.com/1.jpg", True), ("https://www.babepedia.com/g/1.jpg", True),
+                           ("https://www.pornpics.com/set/", False)):
+            f.get(url, image=image)
+        self.assertTrue(0.7 <= sleeps[0] <= 1.3 and 4.9 <= sleeps[1] <= 9.1 and 4.9 <= sleeps[2] <= 9.1, sleeps)
+        self.assertEqual(Fetcher(0.5).image_delay, 0.5)  # never slower than the request delay
 
 
 class ConfigTest(unittest.TestCase):
@@ -158,9 +181,13 @@ class Curate(unittest.TestCase):
         self.assertGreater(s(long_edge=1300), s(long_edge=1050))
         self.assertGreater(s(long_edge=1050), s(long_edge=900))
         self.assertLess(s(soft=True), s())
-        self.assertGreater(s(models=1), s(models=2))
-        self.assertGreater(s(models=2), s(models=5))
         self.assertGreater(s(images=12), s(images=6))
+        self.assertGreater(s(images=40), s(images=25))
+        self.assertGreater(s(images=40), s(images=70))
+        self.assertGreater(s(images=70), s(images=200))
+        self.assertEqual(curate.size_score(20, 40), curate.size_score(80, 40))
+        self.assertEqual((curate.size_score(40, 40), curate.size_score(1, 40), curate.size_score(0, 40)), (2.0, -3.0, -3.0))
+        self.assertEqual(curate.size_score(5, 0), 0.0)
         self.assertGreater(s(long_edge=1800), s(long_edge=900))
         self.assertGreater(s(studio="Fav"), s(studio="Unknown"))
         self.assertGreater(s(studio="Unknown"), s(studio="Meh"))
@@ -168,14 +195,27 @@ class Curate(unittest.TestCase):
         self.assertIsNone(s(studio="bad-studio"))
         self.assertIsNone(s(tags=["gangbang", "x"]))
 
+    def test_model_score(self):
+        m = curate.model_score  # (models, females)
+        self.assertEqual([m(1, 1), m(1, 0)], [3.0, 3.0])
+        self.assertEqual([m(2, 1), m(2, 2), m(2, 0), m(3, 2), m(3, 1), m(3, 3)], [0.0, 1.0, 1.0, 1.0, 2.0, 2.0])  # FM FF MM FFM MMF FFF
+        self.assertEqual([m(4, 2), m(4, 1), m(4, 4), m(5, 1), m(5, 5), m(11, 1), m(4, 0), m(5, 0)],
+                         [1.0, 3.0, 3.0, 4.0, 4.0, 4.0, 3.0, 3.0])
+        cfg = Config()
+        female = {"Jane", "Mary"}.__contains__
+        score = curate.Scorer(cfg, is_female=female).score
+        mmf = self.item("x", "candidate", models=3, names=["Jane", "Bob", "Unknown Guy"])
+        ffm = self.item("y", "candidate", models=3, names=["Jane", "Mary", "Bob"])
+        self.assertEqual(score(mmf) - score(ffm), 1.0)
+
     def test_plan_budget_ratings_and_studio_cap(self):
         cfg = Config(max_per_performer=3, max_per_studio=1)
         items = [self.item("solo-a", studio="A", models=1), self.item("solo-a2", studio="A", models=1),
-                 self.item("group", studio="B", models=5), self.item("rated", studio="B", models=5, rating100=80),
+                 self.item("group", studio="B", models=2), self.item("rated", studio="B", models=5, rating100=80),
                  self.item("one-star", studio="C", models=1, rating100=20),
                  self.item("new", "candidate", studio="D", models=1, images=30)]
         chosen, evict, queued = curate.plan(items, cfg, curate.Scorer(cfg))
-        self.assertEqual([i.key for i in chosen], ["rated", "solo-a", "new"])  # solo-a2: studio A already has one
+        self.assertEqual([i.key for i in chosen], ["rated", "new", "solo-a"])  # solo-a2: studio A already has one
         self.assertEqual(sorted(i.key for i in evict), ["group", "one-star", "solo-a2"])
         self.assertEqual([i.key for i in queued], ["new"])
 
@@ -286,7 +326,7 @@ class Apply(unittest.TestCase):
         stash = FakeStash({("studio", "Penthouse"): "3", ("performer", "Mary"): "12"})
         sc = {"title": "T", "date": "2020-01-02", "studio": "Penthouse", "urls": ["u1"], "performer_id": "7",
               "other_performers": ["Mary"]}
-        values, problems = apply.plan(stash, Config(), self.gallery(), sc)
+        values, problems = apply.plan(stash, self.gallery(), sc)
         self.assertEqual(problems, [])
         self.assertEqual(values, {"id": "5", "studio_id": "3", "title": "T", "date": "2020-01-02", "urls": ["u1"],
                                   "performer_ids": ["7", "12"]})
@@ -295,28 +335,18 @@ class Apply(unittest.TestCase):
         stash = FakeStash({})
         g = self.gallery(title="Mine", studio={"id": "1"}, urls=["u0"], performers=[{"id": "7"}])
         sc = {"title": "T", "studio": "Nope", "urls": ["u0", "u1"], "performer_id": "7", "other_performers": ["Ghost"]}
-        values, problems = apply.plan(stash, Config(), g, sc, dry=False)
+        values, problems = apply.plan(stash, g, sc, dry=False)
         self.assertEqual(values, {"id": "5", "urls": ["u0", "u1"], "tag_ids": ["900"]})
         self.assertEqual(problems, ["performer 'Ghost' not in Stash"])  # studio already set by hand: not a problem
 
-    def test_quality_tags(self):
-        stash = FakeStash({("tag", apply.QUALITY_TAGS["soft"]): "50"})
-        sc = {"kind": "set", "other_performers": [], "quality": {"edge": 1800, "soft": False}}
-        values, _ = apply.plan(stash, Config(), self.gallery(tags=[{"id": "50"}, {"id": "1"}]), sc, dry=False)
-        self.assertEqual(stash.created, [apply.QUALITY_TAGS["solo"], apply.QUALITY_TAGS["hires"]])
-        self.assertEqual(values, {"id": "5", "tag_ids": ["1", "900", "901"]})  # Soft removed, Solo + High-res added
-        group = {"kind": "set", "other_performers": ["A", "B"]}
-        self.assertEqual(apply.quality_tags(group), {"group"})
-        self.assertEqual(apply.quality_tags({"kind": "promo"}), set())
-
     def test_dry_run_creates_no_tag(self):
         stash = FakeStash({})
-        _, problems = apply.plan(stash, Config(), self.gallery(), {"studio": "Nope"}, dry=True)
+        _, problems = apply.plan(stash, self.gallery(), {"studio": "Nope"}, dry=True)
         self.assertEqual((problems, stash.created), (["studio 'Nope' not in Stash"], []))
 
     def test_review_tag_removed_once_resolved(self):
         stash = FakeStash({("tag", apply.REVIEW_TAG): "900", ("studio", "S"): "3"})
-        values, _ = apply.plan(stash, Config(), self.gallery(tags=[{"id": "900"}, {"id": "1"}]), {"studio": "S"})
+        values, _ = apply.plan(stash, self.gallery(tags=[{"id": "900"}, {"id": "1"}]), {"studio": "S"})
         self.assertEqual(values, {"id": "5", "studio_id": "3", "tag_ids": ["1"]})
 
 
@@ -347,6 +377,7 @@ class DownloadFlow(unittest.TestCase):
     def downloader(self, blobs, dry=False):
         d = Downloader(None, self.cfg, FakeFetcher(blobs), self.idx, Report(), dry=dry)
         d.sources = []
+        d.scorer = curate.Scorer(self.cfg, is_female={"Jane Doe", "Mary"}.__contains__)
         return d
 
     def run_set(self, info, blobs, performer=None):
@@ -471,25 +502,54 @@ class DownloadFlow(unittest.TestCase):
         self.survey_set(a)
         self.assertEqual(self.idx.status(a.url), "small")
 
-    def test_fill_takes_the_best_candidates_until_the_budget_is_full(self):
+    def test_fill_replaces_the_lowest_set_once_a_better_one_is_on_disk(self):
         self.cfg.max_per_performer = 2
         p = {"id": "7", "name": "Jane Doe", "alias_list": []}
         blobs = {}
         infos = {}
-        for sid, seeds, models in (("1", [1, 2, 3], ["Jane Doe", "A", "B", "C"]), ("2", [4, 5, 6], ["Jane Doe"]),
+        for sid, seeds, models in (("1", [1, 2, 3], ["Jane Doe", "A"]), ("2", [4, 5, 6], ["Jane Doe"]),
                                    ("3", [1, 2, 3], ["Jane Doe"]), ("4", [7, 8, 9], ["Jane Doe", "Mary"])):
             info, urls = self.info("pornpics", sid, seeds)
             info.models = models
             blobs.update({u: jpeg(s) for u, s in zip(urls, seeds)})
             infos[sid] = info
-        self.run_set(infos["1"], blobs)  # already on disk: a 4-model set
+        self.run_set(infos["1"], blobs)  # already on disk: an FM duo, the lowest model score
         for sid in ("2", "3", "4"):
             self.idx.add_candidate("7", infos[sid])
         self.idx.mark(infos["3"].url, "duplicate")  # handled before: not a candidate any more
         d = self.downloader(blobs)
         d.fill(p, layout.performer_dir(self.root, p), "who")
-        self.assertEqual((self.idx.status(infos["2"].url), self.idx.status(infos["4"].url)), ("done", None))
-        self.assertEqual(len(curate.kept_items(layout.performer_dir(self.root, p), self.idx)), 2)
+        self.assertEqual([self.idx.status(infos[s].url) for s in ("1", "2", "4")], ["evicted", "done", "done"])
+        self.assertEqual((len(curate.kept_items(layout.performer_dir(self.root, p), self.idx)), d.evicted), (2, 1))
+
+    def test_fill_keeps_the_old_set_when_the_replacement_fails(self):
+        self.cfg.max_per_performer = 1
+        p = {"id": "7", "name": "Jane Doe", "alias_list": []}
+        old, urls = self.info("pornpics", "1", [1, 2, 3])
+        old.models = ["Jane Doe", "Mary", "A", "B"]
+        blobs = {u: jpeg(s) for u, s in zip(urls, [1, 2, 3])}
+        self.run_set(old, blobs)
+        same, same_urls = self.info("elitebabes", "9", [1, 2, 3])  # scores higher (solo), but the same photos
+        same.models = ["Jane Doe"]
+        blobs.update({u: jpeg(s) for u, s in zip(same_urls, [1, 2, 3])})
+        self.idx.add_candidate("7", same)
+        d = self.downloader(blobs)
+        d.fill(p, layout.performer_dir(self.root, p), "who")
+        self.assertEqual((self.idx.status(old.url), self.idx.status(same.url), d.evicted), ("done", "duplicate", 0))
+
+    def test_dry_fill_reports_what_would_be_replaced(self):
+        self.cfg.max_per_performer = 1
+        p = {"id": "7", "name": "Jane Doe", "alias_list": []}
+        old, urls = self.info("pornpics", "1", [1, 2, 3])
+        old.models = ["Jane Doe", "Mary", "A", "B"]
+        _, pdir = self.run_set(old, {u: jpeg(s) for u, s in zip(urls, [1, 2, 3])})
+        new, _ = self.info("elitebabes", "9", [4, 5, 6])
+        new.models = ["Jane Doe"]
+        self.idx.add_candidate("7", new)
+        d = self.downloader({}, dry=True)
+        d.fill(p, pdir, "who")
+        self.assertEqual((d.report.counts["WOULD-GET"], d.report.counts["EVICT"], self.idx.status(old.url)), (1, 1, "done"))
+        self.assertEqual(len(curate.kept_items(pdir, self.idx)), 1)
 
     def test_dry_fill_downloads_nothing(self):
         info, _ = self.info("pornpics", "5", [1])
@@ -526,7 +586,7 @@ class DownloadFlow(unittest.TestCase):
         _, pdir = self.run_set(group, blobs)
         stash = type("S", (), {"galleries_under": lambda self, root: [], "studio_info": lambda self, n: None,
                                "clean": lambda self, paths: "42", "favorite_tags": lambda self: set(),
-                               "keepalive": lambda self: None})()
+                               "keepalive": lambda self: None, "is_female": lambda self, n: n == "Jane Doe"})()
         report = Report()
         curate.curate_all(stash, self.cfg, self.idx, report, dry=True)
         self.assertEqual((report.counts["EVICT"], len(os.listdir(pdir))), (1, 2))

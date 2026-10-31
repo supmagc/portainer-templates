@@ -93,6 +93,17 @@ def ensure_dir(path, stop_at):
         os.chmod(d, stat.S_IMODE(os.stat(parent).st_mode))
 
 
+def prune_empty_dirs(root):
+    """Remove the completely empty folders below root, deepest first (a folder with only set.json is a resumable
+    partial download and stays). Returns how many were removed."""
+    removed = 0
+    for dirpath, _dirs, _files in os.walk(root, topdown=False):
+        if dirpath != root and not os.listdir(dirpath):
+            os.rmdir(dirpath)
+            removed += 1
+    return removed
+
+
 def _match_owner(path, like):
     st = os.stat(like)
     try:

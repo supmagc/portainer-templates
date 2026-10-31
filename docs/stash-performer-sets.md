@@ -59,6 +59,10 @@ URL to the performer to pin the right model page (EliteBabes slugs like `ella-7`
 
 Each source runs politely: `request_delay` (default 2 s, ±30 % jitter) per host, retries with backoff on
 429/5xx, and a Cloudflare challenge or persistent 429 disables that source for the rest of the run.
+Images from hosts that serve no pages (`cdni.pornpics.com`, `cdn.elitebabes.com`, stash-box CDNs) use a
+fixed 1 s instead (`IMAGE_DELAY` in `ps/fetch.py`, never above `request_delay`); Babepedia serves its
+images from the page host, so they keep `request_delay`. 2026-10-31: with `request_delay` 7 a run spent ~97 % of its time sleeping (8 s median
+per set page, ~5 min per 40-image set) — the delay, not scoring or parsing (0.4 s fetch+parse), is the cost.
 
 ## Budget and quality (v0.3/v0.4)
 
@@ -71,22 +75,38 @@ compress, and the dedupe index, resume, Curate and Stash browsing all work on lo
 1. **Survey**: for each source, the set pages of up to `max_sets_per_source` new listing entries are
    fetched, validated (models, `min_image_size`) and stored as **candidates** in the index — no images.
    A listing walked to the end is skipped for `recheck_days` (default 7), so reruns are cheap.
-2. **Fill**: a performer has a budget of `max_sets_per_performer` sets (default 50, all sources
-   together). Free slots are filled with the best-scored candidates. Before a full download the
-   3 sample images decide (v0.4):
+2. **Fill** (v0.5: replaces the separate download-then-Curate cycle): a performer has a budget of
+   `max_sets_per_performer` sets (default 50, all sources together). Downloaded sets and candidates
+   are ranked together; the best candidate inside the budget is downloaded, and only **after** it is on
+   disk does the lowest downloaded set fall out of the budget and get **evicted** (folder deleted, URLs
+   `evicted`, fingerprints kept — see Curate). Repeat until no candidate makes the budget. Downloaded
+   sets that are excluded, rated out or over a lowered budget are evicted up front. Before a full
+   download the 3 sample images decide (v0.4):
    - same set as one on disk → `duplicate`, unless this copy is clearly better (≥ 20 % more resolution
      and ≥ 80 % of the images, or ≥ 50 % more images at ≥ 90 % of the resolution): then it **replaces**
      the old copy (`UPGRADE`; a Clean is queued). Rated/organized galleries are never replaced.
    - median long edge < `min_image_size` (default 800) or sharpness below the soft threshold →
      `low-quality` (final).
-   Only a real new set takes the slot; downloads never delete anything else.
-3. **Curate** (task): scores the downloaded sets and the candidates together, keeps the best budget's
-   worth and **evicts** the rest: the folder is deleted, its URLs get the final status `evicted` and
-   its image fingerprints stay in the index, so the same set from another source is a duplicate, not a
-   new download. Then a Stash Clean of the download folder is queued.
+   A duplicate or low-quality candidate evicts nothing, so a set is never deleted for a replacement
+   that doesn't materialise (the flaw of the pre-v0.5 Curate-first order). A freshly downloaded set is
+   re-scored with measured values and can itself be the one that falls out (PornPics candidates have
+   no known resolution until downloaded). A Stash Clean is queued after evictions/upgrades. Download and
+   Curate end by removing every completely empty folder under the root (`PRUNED`; e.g. a `_promo` whose
+   images all turned out duplicate/small); a folder with only `set.json` is a resumable partial and stays.
+3. **Curate** (task, maintenance): the same budget applied to downloaded sets **only** (no candidates),
+   across every performer folder, selected or not — evicts excluded, rated-out and over-budget sets,
+   measures sharpness of pre-v0.4 images, re-applies `set.json`. An evicted set's image fingerprints stay in
+   the index, so the same set from another source is a duplicate, not a new download. Needed after
+   changing scoring settings for performers no longer selected; otherwise Download does it all.
 
-Score (higher is better; `ps/curate.py`): solo +3, two models +1, three 0, four or more −2; fewer than
-8 images −3, 12 or more +1; median long edge ≥ 2000 px +3, ≥ 1600 +2, ≥ 1200 0, ≥ 1000 −1, below −3
+Score (higher is better; `ps/curate.py`): **models** solo +3, otherwise
+min(4, |M − F| / 2 + (F < M ? 1 : 0) + (F + M − 2) / 2), −1 when F = 0, where F = credited models whose
+Stash gender is Female and M = everyone else (male, trans, no gender, not in Stash — 23 % of co-model
+credits on 2026-10-31); e.g. FM 0, FF 1, MM 1, FFM 1, MMF 2, FFF 2, FFMM 1, FMMM 3, FFFF 3, FMMMM 4,
+FFFFF 4, 1F + 10M 4 (groups can top solo by 1: exclude with `tag_weights` if unwanted);
+genders come from one all-performers query per run; image
+count +2 at `ideal_set_size` (default 40), −2 per halving or doubling away from it, floor −3 (40 → +2,
+20/80 → 0, 10/160 → −2; 0 = off); median long edge ≥ 2000 px +3, ≥ 1600 +2, ≥ 1200 0, ≥ 1000 −1, below −3
 (when known: measured for downloaded sets, from the page for candidates except PornPics, whose stated
 sizes are wrong); soft −4; the **Stash studio** (looked up by name/alias) hearted +4 and rating
 (stars − 3), a hearted/rated **parent studio** counts for its sub-studios; tag weights (below); an
@@ -109,11 +129,10 @@ relative: a set is **soft** when its median is below the `blur_percentile` (defa
 medians in the library (needs ≥ 50 measured sets). Curate measures images indexed before v0.4 once
 (~15 ms each, plus reading the file).
 
-**Quality tags** (`quality_tags`, default on): galleries get `Performer Sets: Solo` / `Duo` / `Group`,
-`Performer Sets: High-res` (median ≥ 1600 px) and `Performer Sets: Soft`, from `set.json` `quality`
-(written at download and by Curate). They are the only tags this plugin removes again; renaming one in
-Stash is fine if the old name stays as an alias. No gallery needs reviewing — ratings and tags are
-optional overrides and filters.
+The measured quality (long edge, sharpness, soft) is stored in `set.json` `quality` (at download and by
+Curate); the v0.4 quality tags (`Performer Sets: Solo` / `Duo` / `Group` / `High-res` / `Soft`) were
+removed in v0.5 — delete those tags in Stash if they exist. No gallery needs reviewing — ratings are
+optional overrides.
 
 Gallery ratings (optional) feed back: a gallery rated at most `evict_rating` stars (default 1) is evicted by
 Curate and never fetched again; a gallery rated higher, or marked organized, is never evicted (and
@@ -146,8 +165,9 @@ a gallery under the download folder; **Apply set metadata** does the same for al
 and after fixing studios/aliases).
 
 Applied: `title`, `studio` (only when the gallery has none), `urls` (merged), performers (folder
-performer + `other_performers` found in Stash, union with existing), and with `map_source_tags` the
-source categories that already exist as tags. Manual edits are never overwritten. Lookups are exact
+performer + `other_performers` found in Stash, union with existing). Source categories are kept in
+`set.json` `source_tags` for scoring only (`map_source_tags` was removed in v0.5). Manual edits are never
+overwritten. Lookups are exact
 name/alias first, then a Stash text search compared ignoring case/accents/punctuation (`X Art` →
 `X-Art`); ambiguous = not found. Unresolved studios/performers add the tag
 **`Performer Sets: needs review`** (created on first need); it is removed again once they resolve.
@@ -157,15 +177,17 @@ name/alias first, then a Stash text search compared ignoring case/accents/punctu
 
 Settings (Settings → Plugins): `dry_run` (default **on**), `download_root` (default
 `/data/PerformerSets`), `include_favorites`, `min_rating`, `tags`, `sources`, `promo_images`, `promo_sources`,
-`max_sets_per_performer`, `max_sets_per_studio`, `exclude_studios`, `tag_weights`, `favorite_tag_weight`, `evict_rating`,
-`blur_percentile`, `quality_tags`, `max_sets_per_source` (set pages surveyed per performer per source
+`max_sets_per_performer`, `max_sets_per_studio`, `exclude_studios`, `tag_weights`, `favorite_tag_weight`, `ideal_set_size`, `evict_rating`,
+`blur_percentile`, `max_sets_per_source` (set pages surveyed per performer per source
 per run, default 50; 0 = unlimited), `recheck_days`, `min_image_size`, `request_delay`,
-`dedupe_distance`, `map_source_tags`, `enable_hook`.
+`dedupe_distance`, `enable_hook`.
 
 Tasks: **Dry run: selected performers** (always dry; surveys set pages into the index like a download
-does, then reports `WOULD-GET` per free slot — no images), **Download sets for selected performers**,
-**Curate downloaded sets** (honours `dry_run`: dry = `EVICT`/`CURATE`/`FREED` report only; measuring
-sharpness into the index happens either way),
+does, then reports `WOULD-GET` per candidate that makes the budget and `EVICT` per set it would push
+out, assuming every candidate downloads fine — no images), **Download sets for selected performers**
+(the whole survey → rank → download → evict loop; rerun it to keep improving the sets),
+**Curate downloaded sets** (maintenance, see above; honours `dry_run`: dry = `EVICT`/`CURATE`/`FREED`
+report only; measuring sharpness into the index happens either way),
 **Apply set metadata**, **Rebuild dedupe index**. The report goes to `/config/performer-sets-report.txt`.
 
 **Session expiry**: a task talks to Stash with the session cookie Stash hands the plugin, which expires
@@ -188,7 +210,7 @@ response and the long loops call `keepalive()` (a cheap query when idle > 10 min
    **on**, run **Curate downloaded sets** — the first run measures sharpness of all ~87k images
    (expect the better part of an hour) — and read the `SOFT-BELOW`/`EVICT`/`CURATE`/`FREED` lines;
    then `dry_run` off and run it again: it deletes the evicted folders, writes quality into set.json,
-   tags the galleries and queues the Clean. Only then run downloads again (they fill free slots only).
+   tags the galleries and queues the Clean. From v0.5 on, Download alone keeps improving the sets.
 6. Remove the old plugins and libraries (decided 2026-10-23): plugin dirs `performerGallery`
    (also holds stray zips) and `babepediaGalleryScraper`; libraries `/data/Galleries-Porngals`,
    `/data/Galleries-Babepedia` and `/data/Performers` (and the leftover `stashdb-performer-gallery`

@@ -1,4 +1,5 @@
-"""Selected performers → survey the sources → best candidates into free budget slots → deduplicated images."""
+"""Selected performers → survey the sources → best candidates into the budget (evicting what they push out) →
+deduplicated images."""
 import collections
 import math
 import os
@@ -28,6 +29,7 @@ class Downloader:
         self.scorer = curate.Scorer(cfg, stash)
         self.soft_below = None
         self.upgraded = 0
+        self.evicted = 0
 
     def run(self, performers):
         boxes = self.stash.stash_boxes() if self.cfg.promo_images and "stashbox" in self.cfg.promo_sources else {}
@@ -46,15 +48,17 @@ class Downloader:
                 self.fill(p, pdir, who)
             except Exception as exc:  # noqa: BLE001
                 self.report.emit("ERROR", who, f"{exc}\n{traceback.format_exc()}", "error")
-        for folder in sorted(self.refresh):
+        for folder in sorted(f for f in self.refresh if os.path.isdir(f)):  # not evicted since
             gallery = self.stash.gallery_for_folder(folder)
             if gallery:
-                apply.apply_gallery(self.stash, self.cfg, gallery, self.report, self.dry)
+                apply.apply_gallery(self.stash, gallery, self.report, self.dry)
+        if not self.dry and (pruned := layout.prune_empty_dirs(self.cfg.root)):
+            self.report.emit("PRUNED", None, f"{pruned} empty folder(s)")
         if self.scan_dirs and not self.dry:
             job = self.stash.scan(sorted(self.scan_dirs))
             self.report.emit("SCAN", None, f"queued scan job {job} for {len(self.scan_dirs)} performer folder(s)")
-        if self.upgraded and not self.dry:
-            self.report.emit("CLEAN", None, f"queued clean job {self.stash.clean([self.cfg.root])} for replaced sets")
+        if (self.upgraded or self.evicted) and not self.dry:
+            self.report.emit("CLEAN", None, f"queued clean job {self.stash.clean([self.cfg.root])} for replaced/evicted sets")
 
     # images
 
@@ -62,7 +66,7 @@ class Downloader:
         """'done' | 'duplicate' | 'small' | 'bad'. exclude_set: only exact copies count within it; ignore: sets
         that don't count at all (the copy being replaced)."""
         if data is None:
-            data = self.fetcher.get(im.url, referer=referer).content
+            data = self.fetcher.get(im.url, referer=referer, image=True).content
         if meta is None:
             try:
                 meta = imaging.inspect(data)
@@ -188,27 +192,41 @@ class Downloader:
         self.report.counts["candidate"] += 1
 
     def fill(self, p, pdir, who):
+        """Candidates and downloaded sets compete for the budget: the best candidate inside it is downloaded, and
+        only once it is on disk does the lowest downloaded set fall out (evicted). A candidate that turns out a
+        duplicate or low quality costs nothing."""
         keys = layout.performer_keys(p)
         cands = self.idx.candidates(p["id"])
         for status, info in cands:
             if status == "partial" and not self.dry:  # its folder already counts as a downloaded set
                 self.download_set(p, pdir, info, keys, who)
-        kept = curate.kept_items(pdir, self.idx, soft_below=self.soft_below)
-        budget = self.cfg.max_per_performer
-        if budget and len(kept) > budget:
-            self.report.emit("OVER-BUDGET", who, f"{len(kept)} sets > {budget}: run the Curate task", "warning")
-        slots = max(0, budget - len(kept)) if budget else len(cands)
+        galleries = {g["folder"]["path"]: g for g in self.stash.galleries_under(pdir)} if self.stash else {}
         open_ = [curate.candidate_item(info) for status, info in cands if status is None]
-        for item in curate.rank(kept + open_, self.cfg, self.scorer):
-            if slots <= 0:
-                break
-            if item.kind != "candidate":
-                continue
-            if self.dry:
+        if self.dry:
+            kept = curate.kept_items(pdir, self.idx, galleries, self.soft_below)
+            _chosen, out, queued = curate.plan(kept + open_, self.cfg, self.scorer)
+            for item in queued:
                 self.report.emit("WOULD-GET", who, f"score {item.score:g}, {item.images} images: {item.key}")
-                slots -= 1
-            elif self.download_set(p, pdir, item.info, keys, who) == "done":
-                slots -= 1
+            for item in sorted(out, key=lambda i: i.key):
+                curate.evict(item, self.idx, self.report, True, who)
+            return
+        self.trim(pdir, galleries, who)  # excluded, rated out or over a lowered budget: no replacement needed
+        while open_:
+            kept = curate.kept_items(pdir, self.idx, galleries, self.soft_below)
+            _chosen, _out, queued = curate.plan(kept + open_, self.cfg, self.scorer)
+            if not queued:
+                break
+            open_.remove(queued[0])
+            if self.download_set(p, pdir, queued[0].info, keys, who) in ("done", "upgraded"):
+                self.trim(pdir, galleries, who)
+
+    def trim(self, pdir, galleries, who):
+        """Evict the downloaded sets outside the budget (lowest score first out)."""
+        kept = curate.kept_items(pdir, self.idx, galleries, self.soft_below)
+        _chosen, out, _queued = curate.plan(kept, self.cfg, self.scorer)
+        for item in sorted(out, key=lambda i: i.key):
+            curate.evict(item, self.idx, self.report, self.dry, who)
+        self.evicted += len(out)
 
     def download_set(self, p, pdir, info, keys, who):
         """'done' | 'upgraded' | 'duplicate' | 'low-quality' | 'error' (only 'done' takes a free slot)."""
@@ -234,7 +252,7 @@ class Downloader:
         folder = resumed if resumed and os.path.isdir(resumed) else posixpath.join(pdir, layout.set_dir_name(info))
         sample = []
         for im in images[:SAMPLE]:
-            data = self.fetcher.get(im.url, referer=referer).content
+            data = self.fetcher.get(im.url, referer=referer, image=True).content
             try:
                 sample.append((im, data, imaging.inspect(data)))
             except ValueError:

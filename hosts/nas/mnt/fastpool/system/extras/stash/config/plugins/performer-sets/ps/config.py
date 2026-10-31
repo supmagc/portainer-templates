@@ -62,14 +62,13 @@ class Config:
     exclude_studios: list = field(default_factory=list)
     tag_weights: list = field(default_factory=list)
     favorite_tag_weight: float = 2.0
+    ideal_set_size: int = 40
     evict_rating100: int = 20
     recheck_days: float = 7
     blur_percentile: float = 10
-    quality_tags: bool = True
     min_size: int = 800
     delay: float = 2.0
     distance: int = 4
-    map_source_tags: bool = False
     enable_hook: bool = True
 
     @classmethod
@@ -90,13 +89,12 @@ class Config:
             exclude_studios=_csv(s.get("exclude_studios")),
             tag_weights=_weights(s.get("tag_weights")),
             favorite_tag_weight=max(-10.0, min(10.0, _num(s.get("favorite_tag_weight"), 2.0))),
+            ideal_set_size=max(0, int(_num(s.get("ideal_set_size"), 40))),
             evict_rating100=max(0, min(100, round(_num(s.get("evict_rating"), 1) * 20))),
             recheck_days=_num(s.get("recheck_days"), 7),
             blur_percentile=_num(s.get("blur_percentile"), 10),
-            quality_tags=_bool(s.get("quality_tags"), True),
             min_size=int(_num(s.get("min_image_size"), 800)),
             delay=_num(s.get("request_delay"), 2.0),
             distance=int(_num(s.get("dedupe_distance"), 4)),
-            map_source_tags=_bool(s.get("map_source_tags"), False),
             enable_hook=_bool(s.get("enable_hook"), True),
         )
