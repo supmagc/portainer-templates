@@ -1,0 +1,29 @@
+params:
+  - name: OUTPUT_UID
+    default: 940
+  - name: OUTPUT_GID
+    default: 940
+  - name: RETENTION_DAYS
+    default: 30
+
+schedule: "30 4 */5 * *"
+steps:
+  - id: backup
+    action: docker.run
+    with:
+      image: alpine:3.22
+      pull: missing
+      auto_remove: true
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/seerr-backup.sh:/seerr-backup.sh:ro
+        # rw, not ro: sqlite needs write access to the -shm file of a WAL database even to read it
+        - /mnt/fastpool/system/multimedia/seerr:/seerr
+        - /mnt/rightpool/backup/automated/seerr:/backup
+      container:
+        env:
+          - TZ=Europe/Brussels
+          - BACKUP_TARGET=/backup
+          - RETENTION_DAYS=${params.RETENTION_DAYS}
+          - OUTPUT_UID=${params.OUTPUT_UID}
+          - OUTPUT_GID=${params.OUTPUT_GID}
+      command: sh /seerr-backup.sh

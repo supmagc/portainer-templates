@@ -1,0 +1,36 @@
+secrets:
+  - name: STASH_API_KEY
+    ref: stash-backup/api-key
+
+params:
+  - name: RETENTION_DAYS
+    default: 30
+  # also zips /blobs (covers, performer images): much bigger
+  - name: INCLUDE_BLOBS
+    default: "false"
+
+schedule: "45 4 */5 * *"
+steps:
+  - id: backup
+    timeout_sec: 3600
+    action: docker.run
+    with:
+      image: alpine:3.22
+      pull: missing
+      auto_remove: true
+      network:
+        EndpointsConfig:
+          utilities_default: {}
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/stash-backup.sh:/stash-backup.sh:ro
+        # the same dir as Stash's /backup mount, which must be its backup directory path
+        - /mnt/rightpool/backup/automated/stash:/backup
+      container:
+        env:
+          - TZ=Europe/Brussels
+          - STASH_URL=http://stash:9999
+          - STASH_API_KEY=${env.STASH_API_KEY}
+          - BACKUP_TARGET=/backup
+          - RETENTION_DAYS=${params.RETENTION_DAYS}
+          - INCLUDE_BLOBS=${params.INCLUDE_BLOBS}
+      command: sh /stash-backup.sh

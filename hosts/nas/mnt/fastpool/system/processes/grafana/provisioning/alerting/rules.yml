@@ -962,6 +962,51 @@ groups:
           summary: "Scheduled job {{ $labels.source }}/{{ $labels.name }} failed"
           description: "{{ $labels.source }}/{{ $labels.name }}'s last run did not succeed - check its row on the NAS Overview \"Scheduled Jobs\" table (nas-* sources) or `systemctl status {{ $labels.name }}` on the Pi (openhabian-* sources)."
 
+      - uid: backup-stale
+        title: BackupStale
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 1200, to: 0}
+            datasourceUid: prometheus
+            model:
+              datasource: {type: prometheus, uid: prometheus}
+              # hours past the max age; negative = headroom left
+              expr: (time() - backup_newest_file_timestamp_seconds - backup_max_age_seconds) / 3600
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange: {from: 0, to: 0}
+            datasourceUid: "__expr__"
+            model:
+              datasource: {type: "__expr__", uid: "__expr__"}
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {type: last}
+                  type: query
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup {{ $labels.name }} is stale"
+          description: "The newest file in rightpool/backup/automated/{{ $labels.name }} is {{ printf \"%.1f\" $values.B.Value }}h past its max age - check whatever writes it (its Dagu DAG or the app's own backup schedule). A huge value means the folder has no files at all."
+
       - uid: dagu-scheduler-down
         title: DaguSchedulerDown
         condition: C

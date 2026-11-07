@@ -168,6 +168,102 @@ Manage Configuration dialog, on the same or a newer TrueNAS version. The read-on
 works (confirmed 2026-10-30); if a TrueNAS upgrade ever switches the DB to WAL journaling
 and it starts failing, mount `/data` read-write.
 
+## Jellyfin, Seerr, Navidrome and Stash backups
+
+Multimedia and extras backups are meant to run **every 5 days**, like the *arr apps' own, and keep
+about 30 days of copies. Infrastructure (router, TrueNAS, databases) runs daily. Cron can't
+express a true 5-day interval, so these use `*/5` on the day of the month: the
+1st, 6th, 11th … 31st. The gap is 5 days except at a month's end, where it's shorter.
+
+| Service | Mechanism | When | Keeps | Owner |
+|---|---|---|---|---|
+| Navidrome | Built-in (`ND_BACKUP_PATH`/`_SCHEDULE`/`_COUNT` in compose) | every 5 days, 04:00 | 6 newest | Navidrome's user |
+| Jellyfin | Dagu `jellyfin-backup` → `POST /Backup/Create` | every 5 days, 04:15 | 30 days | Jellyfin's user |
+| Seerr | Dagu `seerr-backup`: `sqlite3 .backup` + `settings.json` → tar.gz | every 5 days, 04:30 | 30 days | `nas_backup`, mode 600 |
+| Stash | Dagu `stash-backup` → GraphQL `backupDatabase` | every 5 days, 04:45 | 30 days | Stash's user |
+
+**Navidrome** backs up its DB only (users, playlists, play counts, not the music) and prunes
+itself. Restore with Navidrome stopped: `navidrome backup restore --backup-file <file>`. It
+runs as `${APP_USER}`, so the backup folder must be writable by that user before the
+container is recreated. Otherwise Docker creates it root-owned and the backup fails.
+
+**Jellyfin** (v12) has a backup API but no schedule and no pruning, so the DAG calls it and
+prunes `jellyfin-backup-*.zip` older than `RETENTION_DAYS` itself. Manual backups made from
+the dashboard land in the same folder and are pruned too. The call is synchronous: it
+returns the zip's `Path` once the file is written, and the script then checks that the zip
+contains `manifest.json`. By default it backs up the database and config only. Metadata,
+subtitles and trickplay are rebuildable, and each can be turned on with an
+`INCLUDE_*` param. Jellyfin refuses to back up while a library scan runs and needs about
+5 GiB free. Any failure is retried up to 6 times, 10 minutes apart. The API key is the Dagu
+`ref:` secret `jellyfin-backup/api-key` (Dashboard → API Keys; an API key gets admin
+rights, which the endpoint requires). Restore: Dashboard → Backups.
+
+**Seerr** has no backup feature, so the DAG copies the DB with SQLite's online backup
+(consistent while Seerr runs) and checks it with `PRAGMA integrity_check`. Seerr's config dir
+is mounted **read-write** even though the job only reads it: if the DB uses WAL journaling,
+SQLite needs write access to the `-shm` file just to read. `settings.json` holds API keys
+for Jellyfin, Sonarr and Radarr, hence mode 600. Restore: stop Seerr, extract the tar into
+`/mnt/fastpool/system/multimedia/seerr`, start it. Organizr isn't covered yet.
+
+**Stash** can back itself up (Settings → Tasks → Backup, or the `backupDatabase` GraphQL
+mutation) but has no scheduler and doesn't prune. Its backup folder held only three files,
+198 days old as of 2026-10-31. The DAG calls the mutation with `download: false`, which
+returns once the file is written but doesn't say where. So the script looks for a
+`stash-go.sqlite.*` newer than its own start and fails if there is none. Stash writes to its
+**Backup directory path** setting (Settings → System), which defaults to the database's own
+folder. It must be set to `/backup`, the compose mount onto `automated/stash`. The backup is the
+SQLite file only (a `VACUUM INTO` copy); `INCLUDE_BLOBS=true` zips `/blobs` in as well.
+It reaches Stash over `utilities_default` with the API key from the Dagu `ref:` secret
+`stash-backup/api-key` (Settings → Security → API Key, the same key the plugins use).
+Restore: stop Stash, put the file back as `/config/stash-go.sqlite`, start it.
+
+Setup, as root on `nas`, before the first run:
+
+```sh
+mkdir -p /mnt/rightpool/backup/automated/navidrome /mnt/rightpool/backup/automated/seerr
+chown --reference=/mnt/rightpool/backup/automated/jellyfin /mnt/rightpool/backup/automated/navidrome
+chown 940:940 /mnt/rightpool/backup/automated/seerr
+chmod 700 /mnt/rightpool/backup/automated/seerr
+```
+
+Then recreate Navidrome (`docker compose up -d`, not `restart`: the mount is new), and register
+`jellyfin-backup/api-key` in the Dagu UI.
+
+## Stale backup detection
+
+`BackupStale` checks what lands in `rightpool/backup/automated/`, not whether a job ran.
+Native app schedules (the *arr apps, Bazarr, Tunarr, Navidrome) aren't Dagu jobs, so
+`DaguDagRunFailed` can't see them, and a "successful" job that writes nothing would pass it
+too.
+
+The Dagu DAG `backup-freshness` runs hourly (`:07`). Its script,
+`backup-freshness-metrics.py`, walks every subfolder of `automated/` (recursively, so the
+*arr apps' `scheduled/` subfolders count). It ignores `*.partial`/`*.tmp` and dotfiles, and
+writes `backups.prom` to node-exporter's textfile dir:
+
+- `backup_newest_file_timestamp_seconds{name}`: mtime of the newest file, `0` if there is none.
+- `backup_newest_file_size_bytes{name}`, `backup_files{name}`
+- `backup_max_age_seconds{name}`: the per-folder threshold.
+
+The thresholds are in the script's `MAX_AGE` map, set to each folder's schedule plus slack:
+
+| Schedule | Max age | Folders |
+|---|---|---|
+| Daily | 30 h | mariadb, postgres, openwrt, truenas, openhabian, tunarr |
+| Every 5 days | 6 d | sonarr, radarr, lidarr, jellyfin, seerr, navidrome, whisparr, stash |
+| Weekly | 8 d | bazarr |
+| Not in the map | 8 d (default) | anything else, e.g. prowlarr, sabnzbd |
+| `None` | not checked | emby (retired) |
+
+A folder that's in the map but doesn't exist is reported as never backed up, so a job whose
+target was never created still alerts. A new folder is picked up automatically with the
+8-day default. Add it to `MAX_AGE` if it runs more often.
+
+The rule lists every checked folder. Its value is hours past the max age, so a negative
+number is the headroom left. If the detector itself stops running, its last file stays in
+place with fixed timestamps, and every folder eventually goes stale. That alerts too, rather
+than going quiet. `noDataState: NoData` covers the file never being written at all.
+
 ## SD-card mirroring guard rails
 
 openHABian's stock `sdrawcopy` / `sdrsync` systemd timers mirror the running SD card to a
@@ -244,11 +340,14 @@ Cross-cutting layers the rows below refer to:
 
 | Item | What to protect | Priority | How | Status |
 |---|---|---|---|---|
-| Sonarr, Radarr, Lidarr, Bazarr | `/config` (DB, settings) | High | App's native backup → `rightpool/backup/automated/<app>` | **Partial** — export folder is mounted; that backups are scheduled and recent is unverified |
-| Emby | Config, users, watch state | High | Native backup → `rightpool/backup/automated/emby` | **Partial** — as above (being retired for Jellyfin) |
-| Jellyfin | Config, users, watch state; `metadata`/`cache` rebuildable | High | Native backup → `rightpool/backup/automated/jellyfin` | **Partial** — as above; trial deployment |
-| Seerr | `settings.json`, request DB | Medium | Copy `/app/config` (stop it, or SQLite `.backup`) → `rightpool/backup/automated/seerr` | **Gap** — a reset means redoing the Jellyfin setup wizard by hand |
-| Navidrome | `navidrome.db` (users, playlists, play counts); music is separate | Medium | Built-in scheduled backup (`ND_BACKUP_PATH` / `ND_BACKUP_SCHEDULE`) → `rightpool/backup/automated/navidrome` | **Gap** — verify option names against your version |
+| Sonarr, Radarr, Lidarr | `/config` (DB, settings) | High | App's native backup, every 5 days, ~30 days kept → `rightpool/backup/automated/<app>/scheduled` | **Done** — Radarr/Lidarr zips checked 2026-10-30 (Sonarr's folder updated the same day). Pre-switch copies in `/config/Backups` stop at 2025-09-17 and can be deleted |
+| Bazarr | `/config` | High | Native backup, weekly (Sat 03:00) → `rightpool/backup/automated/bazarr` | **Done** — checked 2026-10-30 |
+| Tunarr | `db.db`, channel lineups, `xmltv.xml`, search snapshot | Medium | Native backup, daily 03:00 → `rightpool/backup/automated/tunarr` | **Done** — checked 2026-10-30. ~1 GB per tar, 752 MB of it `cache/`: Tunarr always archives `cache/`, images, lineups and `ms-snapshots` (no per-item exclusion in its source); gzip (tar only) is the way to shrink it |
+| Emby | Config, users, watch state | — | Retired (commented out of compose); old exports may remain in `backup/automated/emby` | **N/A** |
+| Jellyfin | Config, users, watch state; `metadata`/`cache` rebuildable | High | Dagu `jellyfin-backup`, every 5 days 04:15, native `POST /Backup/Create` → `rightpool/backup/automated/jellyfin`, 30-day retention ([above](#jellyfin-seerr-navidrome-and-stash-backups)) | **Done** — first run OK 2026-10-31 |
+| Meilisearch | Jellyfin search index | — | Rebuildable from Jellyfin | **N/A** |
+| Seerr | `settings.json`, request DB | Medium | Dagu `seerr-backup`, every 5 days 04:30, SQLite `.backup` + `settings.json` → `rightpool/backup/automated/seerr`, 30-day retention | **Done** — first run OK 2026-10-31 |
+| Navidrome | `navidrome.db` (users, playlists, play counts); music is separate | Medium | Built-in scheduled backup, every 5 days 04:00, 6 kept → `rightpool/backup/automated/navidrome` | **Partial** — no backup yet as of 2026-10-31; needs the container recreated |
 | Organizr | Tab/user config | Low | Copy `/config` | **Gap** (low) |
 | Media libraries (`rightpool/multimedia/{movies,series,music,games}`) | Replaceable media | Low | ZFS redundancy only, by design | **N/A** |
 | `rightpool/multimedia/pictures`, `leftpool/multimedia/phones` | Personal photos/video | Critical | Snapshots + Cloud Sync | **Partial** — Cloud Sync scope unverified |
@@ -263,8 +362,8 @@ Cross-cutting layers the rows below refer to:
 | BitMagnet | Postgres DB `bitmagnet` (DHT index) | Low | Rebuildable; intentionally not dumped | **N/A** |
 | Spotweb | MariaDB `spotweb` (~380K spots, users/settings) | Low | Re-retrievable from NNTP but slow; add `spotweb` to `DB_DUMP_INCLUDE` if its settings matter | **N/A** (decide) |
 | `downloads/` | In-flight and finished downloads | — | Disposable | **N/A** |
-| Stash | DB (`/config`); `generated`/`cache` rebuildable; media is in `leftpool/extras` | Medium | Native backup → `rightpool/backup/automated/stash` | **Partial** (schedule unverified) |
-| Whisparr | `/config` | Medium | Native backup → `rightpool/backup/automated/whisparr` | **Partial** (schedule unverified) |
+| Stash | DB (`/config`); `generated`/`cache` rebuildable; media is in `leftpool/extras` | Medium | Dagu `stash-backup`, every 5 days 04:45, GraphQL `backupDatabase` → `rightpool/backup/automated/stash`, 30-day retention ([above](#jellyfin-seerr-navidrome-and-stash-backups)) | **Partial** — written 2026-10-31, not deployed; nothing had run for 198 days |
+| Whisparr | `/config` | Medium | Native backup, every 5 days → `rightpool/backup/automated/whisparr` | **Done** — set up 2026-10-31 |
 | Namer | `/config` (`namer.cfg`) | Low | Repo holds a placeholder copy; the real token is host-only → secrets copy | **Gap** (low) |
 | `leftpool/extras` | Extras library | Medium | Snapshots; Cloud Sync is a cost decision | **Partial** (unverified) |
 
@@ -307,17 +406,17 @@ the *unverified* entries before relying on them.
 
 | Service | Mechanism | Caveat |
 |---|---|---|
-| Sonarr, Radarr, Lidarr, Whisparr, Prowlarr | Scheduled zip of config DB and settings (System → Backup) | Default folder is under `/config`; the `/backup` mount only helps if the backup folder is pointed there or the files are copied out |
-| Bazarr | Scheduled backup of config and DB | Same folder question |
+| Sonarr, Radarr, Lidarr, Whisparr, Prowlarr | Scheduled zip of config DB and settings (System → Backup) | Default folder is under `/config`; the `/backup` mount only helps if the backup folder is pointed there (done for Sonarr/Radarr/Lidarr) |
+| Bazarr | Scheduled backup of config and DB | Pointed at `/backup` (confirmed) |
 | SABnzbd | Config backup via UI/API | Believed on-demand, not scheduled (unverified) — something must trigger it or `sabnzbd-backup-cleaner` has nothing to prune |
-| Jellyfin (10.11+) | Dashboard → Backups: config, DB, optionally metadata | Believed manual, not scheduled (unverified); mount targets its backup dir |
-| Stash | Settings → Tasks → Backup (DB, optionally blobs) | Manual or via a scheduled task |
+| Jellyfin (12, running) | Dashboard → Backups / `POST /Backup/Create`: DB + config always, optionally metadata/subtitles/trickplay | No scheduled task and no pruning in the server (checked in `release-12.z` source); Dagu `jellyfin-backup` adds both (the `Filtik/Jellyfin-AutoBackup` plugin was rejected: one release, unmaintained, fails silently). Mount targets its backup dir |
+| Navidrome | Scheduled DB backup (`ND_BACKUP_PATH`, `ND_BACKUP_SCHEDULE`, `ND_BACKUP_COUNT`) | Wired up 2026-10-31 (every 5 days, 6 kept) |
+| Stash | Settings → Tasks → Backup / GraphQL `backupDatabase` (DB, optionally blobs) | No scheduler and no pruning in core (checked in `develop` source); Dagu `stash-backup` adds both |
 
 #### Built-in, not wired up yet
 
 | Service | Mechanism |
 |---|---|
-| Navidrome | Scheduled DB backup (`ND_BACKUP_PATH`, `ND_BACKUP_SCHEDULE`, `ND_BACKUP_COUNT`) — verify names |
 | Mealie | Admin → Backups: zip of DB and data, API-triggerable |
 | Vikunja | `vikunja dump` CLI (config, DB, files) |
 | Portainer | Settings → Backup (encrypted archive, API-triggerable; scheduling is Business Edition only) |
@@ -336,13 +435,14 @@ the *unverified* entries before relying on them.
 | Grafana | No real native backup — copy `grafana.db` or export via API |
 | Postgres, MariaDB | `pg_dump` / `mariadb-dump` (done) |
 
-**No native mechanism — copy files:** Syncthing (keys, `config.xml`), Seerr, Organizr,
+**No native mechanism — copy files:** Syncthing (keys, `config.xml`), Seerr (done, see above), Organizr,
 step-ca, Nextcloud (needs maintenance mode + DB dump + data dir; no single command),
 qBittorrent, Traefik, BitMagnet, Dagu.
 
-The *arr/Bazarr/SABnzbd/Jellyfin/Stash rows above stay **Partial** until someone checks on
+The SABnzbd/Prowlarr/Stash/Whisparr rows above stay **Partial** until someone checks on
 the NAS that backups are actually being created on a schedule and landing in
-`rightpool/backup/automated/<app>` (`ls -lt` on those folders).
+`rightpool/backup/automated/<app>`. Once `backup-freshness` is deployed, `BackupStale`
+answers that: each of them is checked against the 8-day default.
 
 ### Highest-value gaps, in order
 
@@ -354,6 +454,6 @@ the NAS that backups are actually being created on a schedule and landing in
    copying these into `rightpool/backup/automated/` (a Dagu DAG fits the existing pattern)
    puts them on the same path to B2 as the DB dumps.
 3. **Activate the Amanda NAS leg** (fix the `/mnt/backup` NFS mount) and add an InfluxDB backup.
-4. **OpenWrt export**, plus Grafana `grafana.db`, Seerr, Syncthing and Navidrome.
+4. Grafana `grafana.db` and Syncthing (OpenWrt, Seerr and Navidrome done).
 5. **Restore test** — nothing here counts as proven until a file has been restored from a
    snapshot, from B2, and with `amrecover`.

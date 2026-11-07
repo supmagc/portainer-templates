@@ -1,0 +1,23 @@
+params:
+  - name: OUTPUT_UID
+    default: 920
+  - name: OUTPUT_GID
+    default: 920
+
+schedule: "7 * * * *"
+steps:
+  - id: export
+    action: docker.run
+    with:
+      image: python:3-alpine
+      pull: missing
+      auto_remove: true
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/backup-freshness-metrics.py:/script.py:ro
+        - /mnt/rightpool/backup/automated:/backups:ro
+        - /mnt/fastpool/system/processes/node-exporter/textfile:/textfile
+      container:
+        env:
+          - OUTPUT_UID=${params.OUTPUT_UID}
+          - OUTPUT_GID=${params.OUTPUT_GID}
+      command: python3 /script.py

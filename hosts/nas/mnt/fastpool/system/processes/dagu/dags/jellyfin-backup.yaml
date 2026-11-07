@@ -1,0 +1,43 @@
+secrets:
+  - name: JELLYFIN_API_KEY
+    ref: jellyfin-backup/api-key
+
+params:
+  - name: RETENTION_DAYS
+    default: 30
+  - name: INCLUDE_METADATA
+    default: "false"
+  - name: INCLUDE_SUBTITLES
+    default: "false"
+  - name: INCLUDE_TRICKPLAY
+    default: "false"
+
+schedule: "15 4 */5 * *"
+steps:
+  - id: backup
+    timeout_sec: 7200
+    action: docker.run
+    with:
+      image: alpine:3.22
+      pull: missing
+      auto_remove: true
+      network:
+        EndpointsConfig:
+          multimedia_default: {}
+      volumes:
+        - /mnt/fastpool/system/processes/dagu/scripts/jellyfin-backup.sh:/jellyfin-backup.sh:ro
+        # the same dir Jellyfin writes to (its /config/data/data/backups mount)
+        - /mnt/rightpool/backup/automated/jellyfin:/backup
+      container:
+        env:
+          - TZ=Europe/Brussels
+          - JELLYFIN_URL=http://jellyfin:8096
+          - JELLYFIN_API_KEY=${env.JELLYFIN_API_KEY}
+          - BACKUP_TARGET=/backup
+          - RETENTION_DAYS=${params.RETENTION_DAYS}
+          - INCLUDE_METADATA=${params.INCLUDE_METADATA}
+          - INCLUDE_SUBTITLES=${params.INCLUDE_SUBTITLES}
+          - INCLUDE_TRICKPLAY=${params.INCLUDE_TRICKPLAY}
+          - MAX_ATTEMPTS=6
+          - RETRY_DELAY=600
+      command: sh /jellyfin-backup.sh

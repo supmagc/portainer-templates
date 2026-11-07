@@ -178,6 +178,11 @@ Sources as of this writing:
   execution is what `nas-cron`/`zpool-metrics` monitors, via the `cron-wrapper.sh` that
   runs it.
 
+Backups get their own rule, `BackupStale`, which checks the age of the files in
+`rightpool/backup/automated/<name>` rather than whether a job ran. It's separate from the
+`scheduled_job_*` family because most backups there are the apps' own schedules, with no
+run or exit code to report. See [backups.md "Stale backup detection"](backups.md#stale-backup-detection).
+
 ## Container health alerting (`ContainerUnhealthy`)
 
 `ContainerCrashLooping` only fires on containers that are *restarting*

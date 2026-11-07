@@ -504,6 +504,7 @@ services:
     volumes:
       - /mnt/fastpool/system/multimedia/navidrome:/data
       - /mnt/rightpool/multimedia/music:/music:ro
+      - /mnt/rightpool/backup/automated/navidrome:/backup
     environment:
       - TZ=${APP_TIMEZONE}
       - ND_PLUGINS_ENABLED=true
@@ -514,6 +515,9 @@ services:
       # changing this needs `navidrome artwork reprocess --all` to apply to existing artists
       - ND_ARTISTARTPRIORITY=artist.*, folder.*, album/artist.*, external
       - ND_PROMETHEUS_ENABLED=true
+      - ND_BACKUP_PATH=/backup
+      - ND_BACKUP_SCHEDULE=0 4 */5 * *
+      - ND_BACKUP_COUNT=6
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:4533/ping || exit 1
       interval: 1m30s
