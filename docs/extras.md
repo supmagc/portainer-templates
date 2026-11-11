@@ -22,7 +22,9 @@ For every scene in a configured library (matched by the video's path prefix):
   performers, tags, rating, runtime, play data, ids, fileinfo, and a `<stash>` block with the rest).
   Existing `uniqueid`s (tvdb/whisparr/tpdb/…) are always preserved; unknown elements are copied
   through; a Whisparr `<episodedetails>` NFO is converted. Unchanged NFOs are not rewritten.
-- Creates a missing poster (2:3 crop) and fanart from the scene screenshot via the container's ffmpeg.
+- Creates a missing poster (2:3 crop; portrait frames are cropped top/bottom instead of sideways) and fanart
+  (as-is, or centred on a blurred 16:9 fill when narrower than 4:3) from the scene screenshot via the container's
+  ffmpeg/ffprobe.
 - Optionally asks Whisparr to rescan the series after a move (`whisparr.enabled`).
 
 Triggers: `Scene.Create/Update.Post`, `Studio.Update.Post`, `Performer.Update.Post` (a renamed
@@ -124,7 +126,8 @@ summary on the report's last line rather than the Stash log; take the key from `
 ## NFO layout
 
 One sidecar per video, same basename: `<video>.nfo` (Kodi/Jellyfin `<movie>`), plus `<video>-poster.png` (2:3 crop)
-and `<video>-fanart.png` (16:9 screenshot). `*.nfo-orig` is a backup of a converted/overwritten NFO. Sources of an NFO:
+and `<video>-fanart.png` (16:9 screenshot; portrait clips get a blurred fill). `*.nfo-orig` is a backup of a
+converted/overwritten NFO. Sources of an NFO:
 
 | Origin | Recognisable by |
 | --- | --- |
