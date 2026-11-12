@@ -1,0 +1,35 @@
+params:
+  - name: BLOCKLIST_URL
+    default: https://github.com/Naunter/BT_BlockLists/raw/master/bt_blocklists.gz
+  - name: MIN_RULES
+    default: 400000
+  - name: EXCLUDE_CATEGORIES
+    default: Bogon
+  - name: OWNER_UID
+    default: 960
+  - name: OWNER_GID
+    default: 960
+
+schedule: "15 7 * * *"
+steps:
+  - id: update
+    action: docker.run
+    retry_policy:
+      limit: 3
+      interval_sec: 300
+    with:
+      image: docker:cli
+      pull: missing
+      auto_remove: true
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+        - /mnt/fastpool/system/processes/dagu/scripts/qbittorrent-blocklist.sh:/qbittorrent-blocklist.sh:ro
+        - /mnt/fastpool/system/downloads/qbittorrent:/qbt
+      container:
+        env:
+          - BLOCKLIST_URL=${params.BLOCKLIST_URL}
+          - MIN_RULES=${params.MIN_RULES}
+          - EXCLUDE_CATEGORIES=${params.EXCLUDE_CATEGORIES}
+          - OWNER_UID=${params.OWNER_UID}
+          - OWNER_GID=${params.OWNER_GID}
+      command: sh /qbittorrent-blocklist.sh

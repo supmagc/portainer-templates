@@ -16,6 +16,25 @@ The media-library stacks and how their apps interlock. Related docs:
 
 tdarr runs in the `utilities` stack, not `multimedia`.
 
+## qBittorrent: embedded tracker vs. listen port (2026-11-12)
+
+The embedded tracker (`TrackerEnabled`, `Advanced\trackerPort`) was enabled on **6881**,
+the same port as the BitTorrent listen port (`Session\Port`). Whichever bound first on
+startup won. When the tracker won, libtorrent logged `Failed to listen on IP ...
+TCP/6881 Reason: "Address in use"` and dropped the whole listen socket, TCP *and* UDP.
+The result was `connection_status: disconnected`, 0 DHT nodes and 0 peers for every
+torrent until the next restart. `qbittorrent_connected` showed it connected only ~4.5 of
+15 days, flipping only at container restarts. Tell-tale signs: `Http::RequestParser ...
+header parsing error` in `docker logs qbittorrent` (peer handshakes hitting the tracker's
+HTTP server), and no UDP socket in `docker exec qbittorrent netstat -lntu`. Fixed by
+disabling the embedded tracker. Turning it off doesn't make the session bind the port
+again; that needs a container restart.
+
+The router has one `wan` DNAT forward for qBittorrent, **6881 tcp+udp** → `192.168.1.110`
+(renamed from the misleading "qBittorrent Tracking"). An older 54907 forward was stale and
+removed. The IP filter is refreshed daily by the `qbittorrent-blocklist` Dagu job; see
+[dagu.md](dagu.md#qbittorrent-blocklist).
+
 ## Seerr and the Jellyfin plugins
 
 Seerr supports exactly **one** media server. It was switched from Emby to Jellyfin on

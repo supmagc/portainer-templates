@@ -374,3 +374,38 @@ collides with another candidate. Runs weekly
 (Sundays 06:00), after the nightly theme-song/backdrop jobs, since it's a full-library scan
 rather than an incremental one.
 
+### qbittorrent-blocklist
+
+Daily (07:15) refresh of qBittorrent's IP filter from
+[Naunter/BT_BlockLists](https://github.com/Naunter/BT_BlockLists) (~688k ranges, the
+repo's GitHub workflow rebuilds it daily, though the author no longer maintains the
+project itself). Verified against qBittorrent's source (`filterparserthread.cpp`,
+`sessionimpl.cpp`) on 2026-11-12:
+
+- qBittorrent only reads a **local, uncompressed file** and picks the parser **from the
+  extension alone** (`.p2p` / `.p2b` / `.dat`). Any other path (the earlier config had a
+  mangled `https:/github.com/.../blob/...` URL) is accepted silently and logs
+  "Successfully parsed ... Number of rules applied: 0". The list is PeerGuardian text
+  format, so it's installed as `/config/blocklist/bt_blocklists.p2p`.
+- Re-setting the same `ip_filter_path` does **not** reload the file
+  (`setIPFilterFile` is a no-op when the path is unchanged). Toggling
+  `ip_filter_enabled` off→on does, so the script does that via the WebUI API.
+
+The list's **`Bogon` category is excluded** (`EXCLUDE_CATEGORIES` param, a `|`-separated
+regex alternation of category names). It is a stale "fullbogon" snapshot: 2,695 ranges
+covering 15% of IPv4, including address space that has since been allocated and is in
+normal use. Examples are Cloudflare `104.16/12` (WARP users), AFRINIC `102/8`, APNIC
+`103.128/10` and RIPE `185.128/9`. On 2026-11-12 it caused 85 of 203 peer blocks. Most of
+the remaining coverage (the whole list spans ~49% of IPv4) is reserved, multicast and
+private space (e.g. the unnamed `lujdnbasfaaixitgmxpp` and `IANA Reserved` categories),
+which is unroutable anyway and harmless to block.
+
+The script (`dagu/scripts/qbittorrent-blocklist.sh`, run in `docker:cli`) downloads the
+`.gz`, drops the excluded categories, refuses a list with fewer than `MIN_RULES` (400000)
+lines, swaps it in atomically
+(owned by `nas_downloads` 960), then reloads through `docker exec qbittorrent curl
+localhost:8282/...`. That needs no WebUI credentials only because qBittorrent's
+`LocalHostAuth=false`; turning localhost auth on makes the job fail with an HTTP 403. It
+also writes `ip_filter_path`, so a broken path in the config heals on the next run. The
+job only succeeds once qBittorrent's own log reports the rule count, so a reload that
+silently loaded 0 rules shows up as a failed run (and so in the Dagu failure alert).
