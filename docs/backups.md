@@ -249,8 +249,8 @@ The thresholds are in the script's `MAX_AGE` map, set to each folder's schedule 
 
 | Schedule | Max age | Folders |
 |---|---|---|
-| Daily | 30 h | mariadb, postgres, openwrt, truenas, openhabian, tunarr |
-| Every 5 days | 6 d | sonarr, radarr, lidarr, jellyfin, seerr, navidrome, whisparr, stash |
+| Daily | 30 h | mariadb, postgres, openwrt, truenas, openhabian |
+| Every 5 days | 6 d | sonarr, radarr, lidarr, jellyfin, seerr, navidrome, whisparr, stash, tunarr |
 | Weekly | 8 d | bazarr |
 | Not in the map | 8 d (default) | anything else, e.g. prowlarr, sabnzbd |
 | `None` | not checked | emby (retired) |
@@ -342,7 +342,7 @@ Cross-cutting layers the rows below refer to:
 |---|---|---|---|---|
 | Sonarr, Radarr, Lidarr | `/config` (DB, settings) | High | App's native backup, every 5 days, ~30 days kept → `rightpool/backup/automated/<app>/scheduled` | **Done** — Radarr/Lidarr zips checked 2026-10-30 (Sonarr's folder updated the same day). Pre-switch copies in `/config/Backups` stop at 2025-09-17 and can be deleted |
 | Bazarr | `/config` | High | Native backup, weekly (Sat 03:00) → `rightpool/backup/automated/bazarr` | **Done** — checked 2026-10-30 |
-| Tunarr | `db.db`, channel lineups, `xmltv.xml`, search snapshot | Medium | Native backup, daily 03:00 → `rightpool/backup/automated/tunarr` | **Done** — checked 2026-10-30. ~1 GB per tar, 752 MB of it `cache/`: Tunarr always archives `cache/`, images, lineups and `ms-snapshots` (no per-item exclusion in its source); gzip (tar only) is the way to shrink it |
+| Tunarr | `db.db`, channel lineups, `xmltv.xml`, search snapshot | Medium | Native backup, every 5 days 03:00 (a true 5-day interval, set in Tunarr's UI), 7 kept → `rightpool/backup/automated/tunarr` | **Done** — checked 2026-10-30; daily until 2026-11-01. ~1 GB per tar, 752 MB of it `cache/`: Tunarr always archives `cache/`, images, lineups and `ms-snapshots` (no per-item exclusion in its source); gzip (tar only) is the way to shrink it |
 | Emby | Config, users, watch state | — | Retired (commented out of compose); old exports may remain in `backup/automated/emby` | **N/A** |
 | Jellyfin | Config, users, watch state; `metadata`/`cache` rebuildable | High | Dagu `jellyfin-backup`, every 5 days 04:15, native `POST /Backup/Create` → `rightpool/backup/automated/jellyfin`, 30-day retention ([above](#jellyfin-seerr-navidrome-and-stash-backups)) | **Done** — first run OK 2026-10-31 |
 | Meilisearch | Jellyfin search index | — | Rebuildable from Jellyfin | **N/A** |

@@ -22,7 +22,7 @@ MAX_AGE = {
     "openwrt": 30 * HOUR,
     "truenas": 30 * HOUR,
     "openhabian": 30 * HOUR,
-    "tunarr": 30 * HOUR,
+    "tunarr": 6 * DAY,
     "sonarr": 6 * DAY,
     "radarr": 6 * DAY,
     "lidarr": 6 * DAY,
