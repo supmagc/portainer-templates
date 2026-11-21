@@ -139,6 +139,21 @@ storage, so nothing goes to DeepSeek itself. OWUI only sends sampling parameters
 Advanced Params, so leave those empty. That way the temperature/top_p issue doesn't
 affect Claude here.
 
+**Task prompt tweaks** (Settings → Interface → Tasks):
+- The default templates contain placeholders (`{{MESSAGES:…}}`) and a JSON output format
+  (`{"tags": […]}`, `{"follow_ups": […]}`) that OWUI parses.
+- Don't rewrite them. Copy the default, keep all of it, and add the line(s) below just
+  before its output-format section.
+- If a new chat's title stays "New Chat" or its tags disappear, the edit broke the
+  format. Clear the field to restore the default.
+
+| Template | Add | Why |
+|---|---|---|
+| Title | `Keep the title to 3–5 words in the language of the conversation. No emojis or quotes. Never put names, addresses, health details or other personal information in the title.` | Titles show in the sidebar; keeps private details off a shared screen |
+| Tags | `Use at most 3 tags. Prefer these when they fit: Household, Cooking, Shopping, Travel, School, Work, Health, Money, Tech, Garden, Kids, Fun. Only make up a new tag if none of these fits.` | Without a fixed list, near-duplicate tags make filtering useless. If the list isn't in English, add `Write the tags in <language>.` |
+| Follow-ups | `Suggest at most 3 short, practical follow-up questions in the language of the conversation, written the way the user would ask them.` | Only matters when follow-up generation is on |
+| Retrieval query, web search, image prompt, autocomplete | Leave the default | Technical prompts; for autocomplete, optionally change `{{MESSAGES:END:6}}` to `END:2` to send less history |
+
 ## Setup (one-time)
 
 Secret files live in `/mnt/fastpool/system/processes/secrets/`, owned by the container
@@ -176,8 +191,13 @@ sign-ups land as `pending`):
    - Make **Default €€** the default model, and hide `mistral-small-2603`.
 5. Settings → Interface → Tasks:
    - External Task Model = `mistral/mistral-small-2603`.
-   - Title and tags generation on, **follow-up and autocomplete generation off**. Each
-     costs an extra call, and by default they run on the chat model itself.
+   - Title, tags and retrieval query generation on. Autocomplete off: it fires on every
+     pause in typing and adds latency. Follow-ups are optional (about $0.0003 per reply
+     on the task model).
+   - Without a task model set, all of these run on the chat model itself.
+   - Apply the task prompt tweaks from the Models section.
+   - Leave Task Model Parameters empty. They apply to every background call, including
+     compaction summaries.
 6. Settings → Documents:
    - Text splitter `token`, chunk size 2000, overlap 200, top K 15. These are the OWUI
      docs' recommendations, not the defaults.
