@@ -31,7 +31,7 @@ steps:
           - DB_PORT=5432
           - DB_USER=backup
           - DB_PASS=${env.DB_PASS}
-          - DB_DUMP_INCLUDE=mealie,vikunja
+          - DB_DUMP_INCLUDE=mealie,vikunja,mem0,openwebui
           - DB_DUMP_TARGET=/backup
           - DB_DUMP_RETENTION_DAYS=${params.RETENTION_DAYS}
           - OUTPUT_UID=${params.OUTPUT_UID}

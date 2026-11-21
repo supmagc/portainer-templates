@@ -25,6 +25,8 @@ area — it'll save you from re-discovering things the hard way.
   replicas, snapshot/B2 policy and the migration steps (2026-10-08 target layout).
 - **[photos.md](photos.md)** — Immich plan: external library over the Lightroom/digiKam
   originals, phone uploads, and the rules that keep the old tools working.
+- **[household-ai.md](household-ai.md)** — Ollama embedder, the self-updating `mem0-mcp`
+  memory server (token→identity, Watchtower-timed update check) and OpenWebUI's first-boot settings.
 - **[multimedia.md](multimedia.md)** — the *arr / Emby / Jellyfin / download stacks, and
   Seerr's Jellyfin link and how the Jellyfin home-screen plugins match Seerr users.
 - **[multimedia-monitoring.md](multimedia-monitoring.md)** — exporter quirks for the media

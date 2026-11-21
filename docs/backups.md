@@ -386,7 +386,7 @@ Cross-cutting layers the rows below refer to:
 | Item | What to protect | Priority | How | Status |
 |---|---|---|---|---|
 | MariaDB | `digikam`, `nextcloud`, `onlyoffice` (`spotweb` excluded, see above) | Critical | Dagu `mariadb-backup`, 04:00 daily, gzip dumps to `rightpool/backup/automated/mariadb`, 7-day retention | **Done** — offsite via Cloud Sync |
-| PostgreSQL | `mealie`, `vikunja` (+ `bitmagnet`, rebuildable) | High | Dagu `postgres-backup`, 04:30 daily, `pg_dump -Fc` to `rightpool/backup/automated/postgres`, 7-day retention | **Partial** — committed 2026-10-07, deployment unverified |
+| PostgreSQL | `mealie`, `vikunja`, `mem0`, `openwebui` (+ `bitmagnet`, rebuildable) | High | Dagu `postgres-backup`, 04:30 daily, `pg_dump -Fc` to `rightpool/backup/automated/postgres`, 7-day retention | **Partial** — committed 2026-10-07, deployment unverified |
 | Dagu | DAG files and scripts; run history/state | Low | Git for definitions; history is disposable | **Done** |
 | Grafana (`processes/grafana/data`) | `grafana.db`: users, UI-managed contact points and notification policy, API keys | Medium | Copy `grafana.db` (SQLite `.backup`) → `rightpool/backup/automated/grafana`. Provisioned dashboards/rules/datasources are in git | **Gap** — contact points/policy exist only here |
 | Prometheus, Loki, Promtail positions | Time-series and log data | — | Disposable; config in git | **N/A** |

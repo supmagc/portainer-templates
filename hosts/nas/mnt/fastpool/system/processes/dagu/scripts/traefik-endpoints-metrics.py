@@ -23,7 +23,7 @@ SOURCES = {
     "traefik-edge": "http://traefik-edge:8080/api/http/routers",
 }
 # router name -> https probe path, for backends that 404 on "/"
-PROBE_PATHS = {"loki-secure": "/ready", "step-ca": "/health"}
+PROBE_PATHS = {"loki-secure": "/ready", "step-ca": "/health", "mem0-secure": "/health"}
 HOST_RULE_RE = re.compile(r"Host\(`([^`]+)`\)")
 
 

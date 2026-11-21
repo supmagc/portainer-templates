@@ -303,6 +303,102 @@ services:
       - /mnt/rightpool/movies:/media/movies
       - /mnt/rightpool/series:/media/series
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    runtime: nvidia
+    user: ${APP_USER}:${APP_GROUP}
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /mnt/fastpool/system/processes/ollama:/ollama
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - HOME=/ollama
+      - OLLAMA_KEEP_ALIVE=2m
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_NUM_PARALLEL=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  mem0-mcp:
+    image: python:3.12-slim
+    container_name: mem0-mcp
+    user: ${APP_USER}:${APP_GROUP}
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - ollama
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.mem0-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.mem0.rule=Host(`mem0.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.mem0.entrypoints=web"
+      - "traefik.http.routers.mem0.middlewares=mem0-https-redirect"
+      - "traefik.http.routers.mem0-secure.rule=Host(`mem0.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.mem0-secure.entrypoints=web-secure"
+      - "traefik.http.routers.mem0-secure.tls=true"
+      - "traefik.http.routers.mem0-secure.tls.certresolver=stepca"
+      - "traefik.http.services.mem0.loadbalancer.server.port=8000"
+    ports:
+      - ${NETWORK_INTERFACE}:8765:8000/tcp
+    secrets:
+      - mem0-postgres-password
+      - mem0-requesty-api-key
+      - mem0-mcp-tokens
+    volumes:
+      - /mnt/fastpool/system/processes/mem0/app:/app:ro
+      - /mnt/fastpool/system/processes/mem0/data:/data
+    command: ["sh", "/app/start.sh"]
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - HOME=/data
+      - MEM0_DIR=/data/mem0
+      - MEM0_TELEMETRY=False
+      - MEM0_UPDATE_CHECK_AT=04:30   # keep after WATCHTOWER_SCHEDULE (04:00)
+      - MEM0_LLM_MODEL=mistral/mistral-small-2603
+      - MEM0_LLM_BASE_URL=https://router.requesty.ai/v1
+      - MEM0_LLM_API_KEY_FILE=/run/secrets/mem0-requesty-api-key
+      - MEM0_EMBED_MODEL=embeddinggemma
+      - MEM0_EMBED_BASE_URL=http://ollama:11434/v1
+      - MEM0_EMBED_DIMS=768   # must match the embed model; changing it needs a new collection
+      - MEM0_PG_HOST=postgres
+      - MEM0_PG_PORT=5432
+      - MEM0_PG_DB=mem0
+      - MEM0_PG_USER=mem0
+      - MEM0_PG_PASSWORD_FILE=/run/secrets/mem0-postgres-password
+      - MEM0_TOKENS_FILE=/run/secrets/mem0-mcp-tokens
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+
 secrets:
   postgres-pass:
     file: /mnt/fastpool/system/processes/secrets/postgres-pass.txt
+  mem0-postgres-password:
+    file: /mnt/fastpool/system/processes/secrets/mem0-postgres-password.txt
+  mem0-requesty-api-key:
+    file: /mnt/fastpool/system/processes/secrets/mem0-requesty-api-key.txt
+  mem0-mcp-tokens:
+    file: /mnt/fastpool/system/processes/secrets/mem0-mcp-tokens.txt

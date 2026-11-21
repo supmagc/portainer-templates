@@ -63,7 +63,7 @@ static targets and the file_sd targets of a module share its job, told apart by 
 `job=~".*tls-cert"`.
 
 **Per-router probe path (2026-10-04).** The discovery script probes `/` unless the router is
-listed in `PROBE_PATHS` (currently `loki-secure` → `/ready` and `step-ca` → `/health`; both 404 on `/`). Add an entry
+listed in `PROBE_PATHS` (currently `loki-secure` → `/ready`, `step-ca` → `/health` and `mem0-secure` → `/health`; all 404 or 401 on `/`). Add an entry
 for any other backend with no root page rather than widening the module's `valid_status_codes`.
 
 **step-ca's Traefik router (2026-10-04).** step-ca's port 9000 is HTTPS-only, so the router
