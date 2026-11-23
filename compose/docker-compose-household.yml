@@ -234,6 +234,9 @@ services:
       - RAG_EMBEDDING_ENGINE=ollama
       - RAG_OLLAMA_BASE_URL=http://ollama:11434
       - RAG_EMBEDDING_MODEL=embeddinggemma
+      - ENABLE_WEB_SEARCH=true
+      - WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8080/search
     deploy:
       resources:
         limits:

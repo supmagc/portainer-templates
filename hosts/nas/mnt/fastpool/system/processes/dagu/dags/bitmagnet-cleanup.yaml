@@ -11,64 +11,78 @@ steps:
       interval_sec: 30
     with:
       dsn: "postgres://bitmagnet_cleanup:${env.PGPASSWORD}@postgres:5432/bitmagnet"
-      timeout: 600
-      # Body is single-quoted, not $$-quoted, so Dagu's $-variable expansion can't touch it.
+      # Must exceed the 40-minute delete budget inside the DO block plus ~1 min candidate scan.
+      timeout: 3000
+      # No SQL comments or $$-quoting below: Dagu's splitter misreads comments and expands $-variables.
       query: |
+        set work_mem = '256MB';
         do '
         declare
-          candidates bytea[];
-          batch_deleted int;
-          total_deleted int := 0;
-          deadlocks int := 0;
+          v_started timestamptz := clock_timestamp();
+          v_deadline timestamptz := clock_timestamp() + make_interval(mins => 40);
+          v_candidates bigint;
+          v_max_id bigint;
+          v_lo bigint := 0;
+          v_batch int;
+          v_deleted bigint := 0;
+          v_deadlocks int := 0;
         begin
-          select coalesce(array_agg(info_hash), array[]::bytea[]) into candidates from (
-            with latest_source as (
-              select distinct on (info_hash)
-                info_hash, updated_at as last_seen, seeders
-              from torrents_torrent_sources
-              order by info_hash, updated_at desc
-            ),
-            classified as (
-              select distinct info_hash from torrent_contents
-            )
-            select ls.info_hash
-            from latest_source ls
-            left join classified c on c.info_hash = ls.info_hash
-            where
-              (c.info_hash is null
-                 and (ls.last_seen < now() - make_interval(days => 30)
-                      or coalesce(ls.seeders, 0) = 0))
-              or (c.info_hash is not null
-                 and ls.last_seen < now() - make_interval(months => 9)
-                 and coalesce(ls.seeders, 0) = 0)
-            limit 2000
-          ) s;
+          insert into maintenance.bitmagnet_cleanup_runs (started_at) values (v_started);
           commit;
 
-          loop
+          drop table if exists pg_temp.cleanup_candidates;
+          create temp table cleanup_candidates (
+            id bigint generated always as identity primary key,
+            info_hash bytea not null
+          );
+          insert into cleanup_candidates (info_hash)
+          select s.info_hash
+          from torrents_torrent_sources s
+          join torrent_contents tc on tc.info_hash = s.info_hash
+          group by s.info_hash
+          having (not bool_or(tc.content_type is not null)
+                  and (max(s.updated_at) < now() - make_interval(days => 30)
+                       or coalesce(max(s.seeders), 0) = 0))
+              or (bool_or(tc.content_type is not null)
+                  and max(s.updated_at) < now() - make_interval(months => 9)
+                  and coalesce(max(s.seeders), 0) = 0)
+          order by s.info_hash;
+          get diagnostics v_candidates = row_count;
+          select coalesce(max(id), 0) into v_max_id from cleanup_candidates;
+          update maintenance.bitmagnet_cleanup_runs set candidates = v_candidates where started_at = v_started;
+          commit;
+
+          while v_lo < v_max_id and clock_timestamp() < v_deadline and v_deadlocks < 10 loop
             begin
               delete from torrents t
               where t.info_hash in (
                 select tt.info_hash from torrents tt
-                where tt.info_hash = any(candidates)
-                order by tt.info_hash
-                limit 200
-                for update skip locked
+                join cleanup_candidates c on c.info_hash = tt.info_hash
+                where c.id > v_lo and c.id <= v_lo + 1000
+                for update of tt skip locked
               );
-              get diagnostics batch_deleted = row_count;
+              get diagnostics v_batch = row_count;
+              v_deleted := v_deleted + v_batch;
+              v_lo := v_lo + 1000;
             exception when deadlock_detected then
-              deadlocks := deadlocks + 1;
-              batch_deleted := -1;
+              v_deadlocks := v_deadlocks + 1;
             end;
-            exit when batch_deleted = 0 or deadlocks >= 10;
-            total_deleted := total_deleted + greatest(batch_deleted, 0);
+            update maintenance.bitmagnet_cleanup_runs
+              set deleted = v_deleted, deadlocks = v_deadlocks
+              where started_at = v_started;
             commit;
           end loop;
 
-          raise notice ''bitmagnet-cleanup: deleted % of % candidates, % deadlocked batches'',
-            total_deleted, cardinality(candidates), deadlocks;
-          if deadlocks >= 10 then
-            raise exception ''bitmagnet-cleanup: gave up after % deadlocks (% deleted)'', deadlocks, total_deleted;
+          update maintenance.bitmagnet_cleanup_runs
+            set finished_at = clock_timestamp(), deleted = v_deleted, deadlocks = v_deadlocks,
+                completed = (v_lo >= v_max_id)
+            where started_at = v_started;
+          commit;
+
+          if v_deadlocks >= 10 then
+            raise exception ''bitmagnet-cleanup: gave up after % deadlocks (% deleted)'', v_deadlocks, v_deleted;
           end if;
         end
         ';
+        select started_at, finished_at, candidates, deleted, deadlocks, completed
+        from maintenance.bitmagnet_cleanup_runs order by started_at desc limit 1;

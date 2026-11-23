@@ -1,0 +1,42 @@
+{
+  "title": "Active Alerts",
+  "uid": "active-alerts",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "tags": ["infra", "alerting"],
+  "timezone": "",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    { "id": 1, "title": "Firing Rules", "type": "alertlist", "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+      "options": {
+        "viewMode": "stat", "groupMode": "default", "groupBy": [], "maxItems": 50, "sortOrder": 4,
+        "dashboardAlerts": false, "alertName": "", "alertInstanceLabelFilter": "", "datasource": "-- Grafana --", "folder": null,
+        "showInactiveAlerts": false,
+        "stateFilter": { "firing": true, "pending": false, "recovering": false, "noData": false, "normal": false, "error": false }
+      } },
+    { "id": 2, "title": "Pending Rules", "type": "alertlist", "gridPos": { "x": 8, "y": 0, "w": 8, "h": 4 },
+      "options": {
+        "viewMode": "stat", "groupMode": "default", "groupBy": [], "maxItems": 50, "sortOrder": 4,
+        "dashboardAlerts": false, "alertName": "", "alertInstanceLabelFilter": "", "datasource": "-- Grafana --", "folder": null,
+        "showInactiveAlerts": false,
+        "stateFilter": { "firing": false, "pending": true, "recovering": false, "noData": false, "normal": false, "error": false }
+      } },
+    { "id": 3, "title": "Error / No Data Rules", "type": "alertlist", "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
+      "options": {
+        "viewMode": "stat", "groupMode": "default", "groupBy": [], "maxItems": 50, "sortOrder": 4,
+        "dashboardAlerts": false, "alertName": "", "alertInstanceLabelFilter": "", "datasource": "-- Grafana --", "folder": null,
+        "showInactiveAlerts": false,
+        "stateFilter": { "firing": false, "pending": false, "recovering": false, "noData": true, "normal": false, "error": true }
+      } },
+    { "id": 4, "title": "Active Alerts (longest-running first)", "type": "alertlist", "gridPos": { "x": 0, "y": 4, "w": 24, "h": 22 },
+      "description": "Every rule not in Normal state, with how long it has been in that state. Expand a rule for its instance table; healthy instances are hidden by the state filter.",
+      "options": {
+        "viewMode": "list", "groupMode": "default", "groupBy": [], "maxItems": 50, "sortOrder": 4, "showInstances": true,
+        "dashboardAlerts": false, "alertName": "", "alertInstanceLabelFilter": "", "datasource": "-- Grafana --", "folder": null,
+        "showInactiveAlerts": false,
+        "stateFilter": { "firing": true, "pending": true, "recovering": true, "noData": true, "normal": false, "error": true }
+      } }
+  ]
+}

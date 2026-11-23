@@ -393,6 +393,45 @@ services:
         limits:
           memory: 1000M
 
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    container_name: searxng
+    user: ${APP_USER}:${APP_GROUP}
+    networks:
+      - default
+    pull_policy: missing
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.searxng-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.searxng.rule=Host(`searxng.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.searxng.entrypoints=web"
+      - "traefik.http.routers.searxng.middlewares=searxng-https-redirect"
+      - "traefik.http.routers.searxng-secure.rule=Host(`searxng.${NETWORK_DOMAIN}`)"
+      - "traefik.http.routers.searxng-secure.entrypoints=web-secure"
+      - "traefik.http.routers.searxng-secure.tls=true"
+      - "traefik.http.routers.searxng-secure.tls.certresolver=stepca"
+      - "traefik.http.services.searxng.loadbalancer.server.port=8080"
+    ports:
+      - ${NETWORK_INTERFACE}:8888:8080/tcp
+    volumes:
+      - /mnt/fastpool/system/processes/searxng/config:/etc/searxng
+      - /mnt/fastpool/system/processes/searxng/cache:/var/cache/searxng
+    environment:
+      - TZ=${APP_TIMEZONE}
+      - SEARXNG_BASE_URL=https://searxng.${NETWORK_DOMAIN}/
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
 secrets:
   postgres-pass:
     file: /mnt/fastpool/system/processes/secrets/postgres-pass.txt

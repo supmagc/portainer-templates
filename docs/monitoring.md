@@ -301,3 +301,13 @@ auth of its own, so `traefik-edge/dynamic/vikunja.yml` denies that path on the p
 pattern as Navidrome) and the public router needs an explicit low `priority`. Nextcloud sits there
 temporarily; `nextcloud-exporter` scrapes were failing with `too many requests` (HTTP 429 from
 Nextcloud's brute-force throttle), so only `nextcloud_up`/`info` exist until that is fixed.
+
+## Active Alerts dashboard
+
+`active-alerts` is built only from Grafana's native **Alert list** panel (`alertlist`, no
+queries). Every rule here is Grafana-managed, so Prometheus has no `ALERTS` series to put in a
+table. The list view shows each non-Normal rule as "Firing for 14h 38m", sorted `Time (asc)`
+(`sortOrder: 4`, oldest first), with its instance table expanded (`showInstances: true`). The
+state filter applies to instances too, so a rule's healthy instances show up only as "N hidden
+by filters". The three stat panels at the top count **rules**, not instances (in 13.3.1,
+`StatView` shows `rules.length`). Checked against the Grafana v13.3.1 source.

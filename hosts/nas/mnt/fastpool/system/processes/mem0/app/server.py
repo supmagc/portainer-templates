@@ -104,10 +104,11 @@ mcp = FastMCP(
 )
 
 
-def current_user():
+def current_user(tool):
     token = get_access_token()
     if token is None:
         raise PermissionError("not authenticated")
+    log.info("tool call: %s (%s)", tool, "header" if token.client_id == HEADER_TRUST else "token")
     if token.client_id != HEADER_TRUST:
         return token.client_id
     user = get_http_headers().get(USER_HEADER, "").strip().lower()
@@ -132,7 +133,7 @@ def slim(item):
 def add_memory(text: str) -> list[dict]:
     """Store a fact, preference or piece of context about the user. Mem0 extracts the
     durable facts and merges them with what it already knows (may add, update or delete)."""
-    user = current_user()
+    user = current_user("add_memory")
     result = memory.add(text, user_id=user)
     return [slim(r) for r in result.get("results", [])]
 
@@ -140,7 +141,7 @@ def add_memory(text: str) -> list[dict]:
 @mcp.tool
 def search_memories(query: str, limit: int = 10) -> list[dict]:
     """Semantic search over the user's memories, best match first."""
-    user = current_user()
+    user = current_user("search_memories")
     result = memory.search(query, filters={"user_id": user}, top_k=max(1, min(limit, 50)))
     return [slim(r) for r in result.get("results", [])]
 
@@ -148,7 +149,7 @@ def search_memories(query: str, limit: int = 10) -> list[dict]:
 @mcp.tool
 def list_memories(limit: int = 100) -> list[dict]:
     """List the user's stored memories."""
-    user = current_user()
+    user = current_user("list_memories")
     result = memory.get_all(filters={"user_id": user}, top_k=max(1, min(limit, 500)))
     return [slim(r) for r in result.get("results", [])]
 
@@ -156,7 +157,7 @@ def list_memories(limit: int = 100) -> list[dict]:
 @mcp.tool
 def update_memory(memory_id: str, text: str) -> dict:
     """Replace the text of one of the user's memories."""
-    user = current_user()
+    user = current_user("update_memory")
     owned(memory_id, user)
     memory.update(memory_id, text=text)
     return slim(memory.get(memory_id) or {"id": memory_id})
@@ -165,7 +166,7 @@ def update_memory(memory_id: str, text: str) -> dict:
 @mcp.tool
 def delete_memory(memory_id: str) -> dict:
     """Delete one of the user's memories."""
-    user = current_user()
+    user = current_user("delete_memory")
     owned(memory_id, user)
     memory.delete(memory_id)
     return {"id": memory_id, "deleted": True}

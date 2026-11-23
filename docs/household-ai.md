@@ -1,10 +1,14 @@
-# Household AI: Ollama, Mem0, OpenWebUI
+# Household AI: Ollama, Mem0, OpenWebUI, SearXNG
 
 | Service | Stack | Role |
 |---|---|---|
 | `ollama` | `utilities` | Embeddings only (`embeddinggemma`, 768 dims) on the shared P400 |
 | `mem0-mcp` | `utilities` | Mem0 long-term memory exposed as an MCP server, `mem0.utilities.bellecerise.local` |
+| `searxng` | `utilities` | Private metasearch, OpenWebUI's web search backend, `searxng.utilities.bellecerise.local` |
 | `open-webui` | `household` | Chat UI, `openwebui.household.bellecerise.local`; chat via Requesty |
+
+Dashboards: Utilities Overview has Ollama, mem0 and SearXNG rows; Household Overview has
+an OpenWebUI row. See Monitoring below.
 
 Chat and Mem0 fact extraction both go to Requesty (`https://router.requesty.ai/v1`). Mem0
 uses `mistral/mistral-small-2603` (EU, no retention). Vectors live in the shared utilities Postgres (pgvector), in
@@ -48,6 +52,8 @@ because mem0 itself doesn't. Telemetry (PostHog, on by default) is off via
 `MEM0_TELEMETRY=False`. mem0 creates its tables `memories` / `memories_entities` itself.
 
 Tools: `add_memory`, `search_memories`, `list_memories`, `update_memory`, `delete_memory`.
+Each call logs `tool call: <tool> (header|token)` for the dashboard. The log line has
+the tool name and client type only, never the email or memory text.
 `add_memory` runs an LLM call that extracts facts and merges them with existing memories.
 
 ## Ollama
@@ -87,6 +93,67 @@ Tools: `add_memory`, `search_memories`, `list_memories`, `update_memory`, `delet
   chat. RAG embeddings use `RAG_OLLAMA_BASE_URL`, a separate setting. If it's on, it points
   at the default `host.docker.internal:11434`, which doesn't resolve, and every model-list
   refresh logs a connection error.
+
+## SearXNG
+
+OpenWebUI's web search engine. A model searches through OWUI's built-in web search tool,
+so any of the chat models can search. Requesty flags Reader (Gemini) as supporting
+provider-side search, but OWUI doesn't send the request field that would trigger it.
+
+- **Image:** `docker.io/searxng/searxng:latest`, a rolling daily build, updated by
+  Watchtower. The old `searxng-docker` repo is archived; upstream now ships compose
+  files from `container/` in the main repo.
+- **Config:** `processes/searxng/config/settings.yml`, mounted at `/etc/searxng`.
+  `secret_key` is the `{{SEARXNG_SECRET_KEY}}` deploy token. `search.formats` must
+  include `json`, or OWUI gets `403 Forbidden`. The limiter is off, since it needs Valkey
+  and only matters for public instances. Image proxy and the public `/stats` pages are
+  off. `safe_search: 1` (moderate) because kids use it.
+- **Contact URL:** Wikipedia, Wikidata and OpenStreetMap refuse to load without
+  `general.contact_url`, because Wikimedia requires contact info in API requests. It's
+  the `{{SEARXNG_CONTACT_URL}}` token (e.g. `mailto:…`), kept out of git because it's
+  personal.
+- **Removed engines:** ahmia and torch are Tor engines that fail to load without a Tor
+  proxy. `use_default_settings.engines.remove` drops them.
+- **Harmless startup noise:** "not owned by searxng:searxng" comes from running as 920.
+  "missing config file: limiter.toml" appears because the limiter is off. A single
+  "X-Forwarded-For nor X-Real-IP header is set" can show up too.
+- **Base URL:** set by `SEARXNG_BASE_URL` in compose, not in `settings.yml`.
+- **User:** runs as 920. Upstream expects uid 977 and only chowns when it runs as root.
+  As 920 it just warns, so the config and cache dirs must be writable by 920. If startup
+  fails, drop the `user:` line; it then runs as root and chowns both dirs to 977.
+- **Healthcheck:** the image ships none. The compose check uses `python3`, which is in
+  the image (confirmed healthy 2026-11-22). Running as 920 also works (confirmed
+  2026-11-22).
+- **No access log, no search counts:** an access log would put every search term in
+  Loki. `/metrics` exists behind `general.open_metrics` (HTTP basic auth, password only),
+  but it isn't enabled, and its metric names are unverified.
+- **OWUI side:** `SEARXNG_QUERY_URL=http://searxng:8080/search`. OWUI adds `q`,
+  `format=json` and the other parameters itself. It reaches the container over
+  `utilities_default`. The `ENABLE_WEB_SEARCH`, `WEB_SEARCH_ENGINE` and
+  `SEARXNG_QUERY_URL` env vars only apply on first boot; on this install, set them in
+  the admin UI (see Setup).
+- **Cost:** search results become model input, often a few thousand tokens per search.
+  That's about $0.001 on Quick but $0.02 or more on the €€€ models.
+
+## Monitoring
+
+All panels are in the provisioned dashboards (`grafana/provisioning/dashboards/json`).
+None of these apps exposes Prometheus metrics, so the panels come from cAdvisor, blackbox
+probes (Traefik-discovered routers), postgres-exporter, the nvidia-smi exporter and Loki
+log counts.
+
+| Row | Panels | Log source |
+|---|---|---|
+| Ollama (Utilities) | Health, restarts, RAM, whole-GPU memory, embedding requests, p95 embedding latency | Ollama's GIN access log: `POST "/v1/embeddings"` with latency |
+| mem0 (Utilities) | Health, restarts, HTTPS probe, RAM, DB size, errors; tool calls, add_memory calls, Requesty calls and failures; calls by tool, outbound Requesty/Ollama calls | `tool call:` lines from `server.py`; httpx request lines |
+| SearXNG (Utilities) | Health, restarts, HTTPS probe, RAM, CPU, memory | — |
+| OpenWebUI (Household) | Health, restarts, HTTPS probe, RAM, DB size, messages; CPU, memory | `POST /api/chat/completions`, one per message sent or regenerated |
+
+Notes:
+- **GPU memory is whole-GPU.** The P400 is shared with Tdarr, Jellyfin and Stash.
+- **Latency includes cold starts.** p95 embedding latency covers requests that waited for
+  the model to load (several seconds).
+- **Spend isn't here.** Per-model spend lives only in the Requesty dashboard.
 
 ## Models (Requesty)
 
@@ -186,7 +253,9 @@ sign-ups land as `pending`):
    - Requesty → **Model IDs**: only the eight models in the table above.
 4. Settings → Models, for each chat model:
    - Name, description, tags and system prompt from the table.
-   - mem0 tools on, Advanced Params → Function Calling = **Native**.
+   - mem0 tools ticked under Tools, **then Save**. Without this OWUI never even connects
+     to mem0, so models can't remember anything.
+   - Advanced Params → Function Calling = **Native**.
    - Sort the models in table order.
    - Make **Default €€** the default model, and hide `mistral-small-2603`.
 5. Settings → Interface → Tasks:
@@ -213,3 +282,23 @@ sign-ups land as `pending`):
 `claude mcp add --transport http --scope user mem0 https://mem0.utilities.bellecerise.local/mcp --header "Authorization: Bearer <token>"`.
 If the step-ca root certificate isn't trusted by Claude Code (Node), point
 `NODE_EXTRA_CA_CERTS` at the root cert, or use `http://192.168.1.110:8765/mcp`.
+
+**SearXNG:**
+1. Add `SEARXNG_SECRET_KEY` (`openssl rand -hex 32`) and `SEARXNG_CONTACT_URL`
+   (e.g. `mailto:you@example.com`) to `.tokens`. Deploy
+   `processes/searxng/config/settings.yml`.
+2. On the NAS, create `processes/searxng/cache`. Chown `config` and `cache` to 920,
+   then `chmod 600` `settings.yml`, since it holds the secret.
+3. Redeploy the utilities stack. Check `https://searxng.utilities.bellecerise.local`
+   returns results, and the container reports healthy (see the VERIFY in compose).
+4. OWUI → Admin → Settings → Web Search:
+   - Enable Web Search, engine `searxng`.
+   - Query URL `http://searxng:8080/search`.
+5. Per chat model, **Features → Web Search** on, so the 🌐 toggle works. Tick
+   **Default Features → Web Search** to start it on in new chats. With Native function
+   calling the model still decides when to search, so it costs nothing until it does.
+   Default on for Quick, Default, Thinker and Reader; off for the €€€ models. Leave
+   Settings → Interface → **Web Search in Chat** on Default; Always forces a search on
+   every message.
+6. Test: ask a model something current, for example today's weather. The reply should
+   cite sources.

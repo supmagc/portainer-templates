@@ -208,8 +208,10 @@ for Jellyfin, Sonarr and Radarr, hence mode 600. Restore: stop Seerr, extract th
 **Stash** can back itself up (Settings → Tasks → Backup, or the `backupDatabase` GraphQL
 mutation) but has no scheduler and doesn't prune. Its backup folder held only three files,
 198 days old as of 2026-10-31. The DAG calls the mutation with `download: false`, which
-returns once the file is written but doesn't say where. So the script looks for a
-`stash-go.sqlite.*` newer than its own start and fails if there is none. Stash writes to its
+returns once the file is written but doesn't say where. So the script lists the folder
+before the call and fails if no new `stash-go.sqlite.*` name appears after it. It compares
+names, not mtimes: busybox `find -newer` works in whole seconds, and on 2026-11-21 a backup
+written in the same second as the start marker was reported as missing. Stash writes to its
 **Backup directory path** setting (Settings → System), which defaults to the database's own
 folder. It must be set to `/backup`, the compose mount onto `automated/stash`. The backup is the
 SQLite file only (a `VACUUM INTO` copy); `INCLUDE_BLOBS=true` zips `/blobs` in as well.
@@ -362,7 +364,7 @@ Cross-cutting layers the rows below refer to:
 | BitMagnet | Postgres DB `bitmagnet` (DHT index) | Low | Rebuildable; intentionally not dumped | **N/A** |
 | Spotweb | MariaDB `spotweb` (~380K spots, users/settings) | Low | Re-retrievable from NNTP but slow; add `spotweb` to `DB_DUMP_INCLUDE` if its settings matter | **N/A** (decide) |
 | `downloads/` | In-flight and finished downloads | — | Disposable | **N/A** |
-| Stash | DB (`/config`); `generated`/`cache` rebuildable; media is in `leftpool/extras` | Medium | Dagu `stash-backup`, every 5 days 04:45, GraphQL `backupDatabase` → `rightpool/backup/automated/stash`, 30-day retention ([above](#jellyfin-seerr-navidrome-and-stash-backups)) | **Partial** — written 2026-10-31, not deployed; nothing had run for 198 days |
+| Stash | DB (`/config`); `generated`/`cache` rebuildable; media is in `leftpool/extras` | Medium | Dagu `stash-backup`, every 5 days 04:45, GraphQL `backupDatabase` → `rightpool/backup/automated/stash`, 30-day retention ([above](#jellyfin-seerr-navidrome-and-stash-backups)) | **Done** — running since 2026-11-01 (every 5 days); same-second false-fail fixed 2026-11-23 |
 | Whisparr | `/config` | Medium | Native backup, every 5 days → `rightpool/backup/automated/whisparr` | **Done** — set up 2026-10-31 |
 | Namer | `/config` (`namer.cfg`) | Low | Repo holds a placeholder copy; the real token is host-only → secrets copy | **Gap** (low) |
 | `leftpool/extras` | Extras library | Medium | Snapshots; Cloud Sync is a cost decision | **Partial** (unverified) |

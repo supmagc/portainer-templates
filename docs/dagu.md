@@ -34,6 +34,47 @@ job fails with `permission denied for table torrents`. A column-level grant is e
 (`GRANT UPDATE (info_hash) ON torrents TO bitmagnet_cleanup;`). The FK cascades into the
 child tables run as the table owner, so the role needs no privileges on those.
 
+**What `bitmagnet-cleanup` deletes (since 2026-11-22):**
+
+- An **unclassified** torrent (`content_type IS NULL`) that is unseen for 30 days or has 0 seeders.
+- A **classified** torrent that is unseen for 9 months and has 0 seeders.
+
+"Seen" is the newest `torrents_torrent_sources.updated_at`. "Seeders" is the highest value across that torrent's sources.
+
+**Before 2026-11-22 the job deleted almost nothing.** It treated "no `torrent_contents` row" as unclassified. But bitmagnet writes a row for every torrent, using a NULL `content_type` when classification fails. So nothing matched, and the job scanned all ~9.6M source rows each night for nothing. From 2026-11-08 it hit its 10-minute timeout every night.
+
+**How it runs now:**
+
+1. One hash-join pass collects every candidate into a temp table. This took about 40s for 2.0M candidates.
+2. It deletes in 1,000-row batches, committing after each batch, until a 40-minute budget runs out.
+3. Anything left over is picked up the next night.
+
+At about 500 torrents/s, the 2026-11-22 backlog of ~2.0M takes two nights. Steady state is roughly 15–20K/day, out of ~75K new torrents a day.
+
+**Deleting doesn't shrink the database files.** Postgres reuses the freed space for new torrents.
+
+Each run writes its counts to `maintenance.bitmagnet_cleanup_runs` (candidates, deleted, deadlocks, and `completed` = the backlog is fully processed). The row is updated after every batch, so you can watch a run in progress. The step's final `SELECT` prints that row into the Dagu log. This replaces `RAISE NOTICE`, which Dagu's `postgres.query` never captures.
+
+**One-time setup** (as `postgres` on the `bitmagnet` DB):
+
+```sql
+create schema if not exists maintenance;
+create table if not exists maintenance.bitmagnet_cleanup_runs (
+  started_at timestamptz primary key, finished_at timestamptz, candidates bigint,
+  deleted bigint not null default 0, deadlocks int not null default 0, completed boolean);
+grant usage on schema maintenance to bitmagnet_cleanup;
+grant select, insert, update on maintenance.bitmagnet_cleanup_runs to bitmagnet_cleanup;
+```
+
+The temp table also relies on the default `TEMP` privilege on the database.
+
+**Dagu `postgres.query` facts** (verified against v2.16.6 source):
+
+- A multi-line query is split into statements by a scanner that respects `'…'` and doubled `''`.
+- That scanner doesn't understand `--` or `/* */` comments, so keep comments out of the SQL.
+- Statements share one connection, but the connection is recycled once it's older than 5 minutes. A temp table therefore can't carry results from a long `DO` into a later statement.
+- `timeout` is in seconds and covers the whole step.
+
 `themerr-fetch` (new, not a migration) downloads theme.mp3 files from ThemerrDB into
 each Radarr/Sonarr movie/series folder, nightly at 03:30. No custom image or manual build
 step: a `vendor` step copies the static `ffmpeg` (`mwader/static-ffmpeg`) and

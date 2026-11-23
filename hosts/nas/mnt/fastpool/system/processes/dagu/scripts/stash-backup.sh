@@ -10,7 +10,8 @@ apk add --no-cache -q curl
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-touch "${WORK}/start"
+# don't use find -newer: whole-second mtimes miss a backup written in the same second
+{ echo /; ls "$BACKUP_TARGET"; } > "${WORK}/before"
 
 BODY="{\"query\":\"mutation { backupDatabase(input: {download: false, includeBlobs: ${INCLUDE_BLOBS}}) }\"}"
 echo "Requesting backup (includeBlobs: ${INCLUDE_BLOBS})..."
@@ -22,7 +23,8 @@ if [ "$code" != 200 ] || grep -q '"errors"' "${WORK}/resp"; then
   exit 1
 fi
 
-OUT_FILE=$(find "$BACKUP_TARGET" -maxdepth 1 -name "stash-go.sqlite.*" -newer "${WORK}/start" | sort | tail -n 1)
+OUT_FILE=$(ls "$BACKUP_TARGET" | grep '^stash-go\.sqlite\.' | grep -vxF -f "${WORK}/before" | sort | tail -n 1)
+OUT_FILE=${OUT_FILE:+${BACKUP_TARGET}/${OUT_FILE}}
 if [ -z "$OUT_FILE" ]; then
   echo "Stash reported success but wrote nothing to ${BACKUP_TARGET}: set its Backup directory path to /backup"
   exit 1
