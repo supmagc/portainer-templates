@@ -11,7 +11,7 @@ The media-library stacks and how their apps interlock. Related docs:
 | Stack | Services |
 |---|---|
 | `multimedia` | Emby, Jellyfin, Meilisearch, Streamystats (+ jobs), Sonarr, Radarr, Lidarr, Bazarr, Organizr, Seerr, Navidrome |
-| `downloads` | SABnzbd (+ cleanup sidecar), qBittorrent, Prowlarr, Spotweb, BitMagnet |
+| `downloads` | SABnzbd (+ cleanup sidecar), qBittorrent, Cleanuparr, Prowlarr, Spotweb, BitMagnet |
 | `extras` | stash, namer, whisparr |
 
 tdarr runs in the `utilities` stack, not `multimedia`.
@@ -34,6 +34,30 @@ The router has one `wan` DNAT forward for qBittorrent, **6881 tcp+udp** → `192
 (renamed from the misleading "qBittorrent Tracking"). An older 54907 forward was stale and
 removed. The IP filter is refreshed daily by the `qbittorrent-blocklist` Dagu job; see
 [dagu.md](dagu.md#qbittorrent-blocklist).
+
+## Cleanuparr (stalled-download cleanup)
+
+Added to the `downloads` stack on 2026-11-25. All configuration lives in its web UI
+(`cleanuparr.<domain>`, SQLite under `/config`); nothing is templated in this repo, so
+redo these steps by hand after a config loss.
+
+1. **Account:** create the admin account on first visit.
+2. **Download client:** qBittorrent at `http://qbittorrent:8282`. Both containers see
+   downloads at `/downloads`, so leave *Download Directory Source/Target* (path mapping)
+   empty.
+3. **\*arrs:** `http://sonarr:8989`, `http://radarr:7878`, `http://lidarr:8686`,
+   `http://whisparr:6969`, each with its API key. They all join `downloads_default`, which
+   is how Cleanuparr reaches them.
+4. **Queue Cleaner:** enable the stalled, slow and metadata-stuck checks with strike
+   limits. A download is removed only after it fails the check that many times in a row,
+   and Cleanuparr then asks the *arr to search for a replacement.
+5. **Download Cleaner / Orphaned Files:** optional. Scan directories must be under
+   `/downloads` (the only mount). Leave *Purge Orphaned After* empty until you've reviewed
+   what lands in the orphaned directory.
+
+Scope: the Queue Cleaner only acts on downloads in an *arr queue. Torrents grabbed by hand
+through Prowlarr (category `prowlarr`) are deliberately left alone; they're managed
+manually.
 
 ## Seerr and the Jellyfin plugins
 

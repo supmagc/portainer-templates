@@ -5,7 +5,8 @@
 | `ollama` | `utilities` | Embeddings only (`embeddinggemma`, 768 dims) on the shared P400 |
 | `mem0-mcp` | `utilities` | Mem0 long-term memory exposed as an MCP server, `mem0.utilities.bellecerise.local` |
 | `searxng` | `utilities` | Private metasearch, OpenWebUI's web search backend, `searxng.utilities.bellecerise.local` |
-| `open-webui` | `household` | Chat UI, `openwebui.household.bellecerise.local`; chat via Requesty |
+| `open-webui` | `household` | Chat UI, `openwebui.household.bellecerise.local` and public `openwebui.bellecerise.be`; chat via Requesty |
+| `mealie` | `household` | Recipe AI (ingredient parsing, page/photo import) via Requesty; see Mealie below |
 
 Dashboards: Utilities Overview has Ollama, mem0 and SearXNG rows; Household Overview has
 an OpenWebUI row. See Monitoring below.
@@ -89,6 +90,12 @@ the tool name and client type only, never the email or memory text.
 - **Built-in Memory clashes with mem0:** OpenWebUI's own Memory feature (`ENABLE_MEMORIES`,
   on by default) exposes tools with the **same names** as mem0's (`add_memory`,
   `search_memories`, …). Keep it off, or a model may write to OWUI's memory instead.
+- **Public access:** `traefik-edge/dynamic/openwebui.yml` serves `openwebui.bellecerise.be`
+  through the host port `3080`. `CORS_ALLOW_ORIGIN` lists both origins, separated by `;`.
+  Without the public one, browser API calls from that host are rejected. Anyone on the
+  internet can open the sign-up page, but `DEFAULT_USER_ROLE=pending` means a new account
+  can't do anything until an admin approves it. To stop sign-ups completely, turn off
+  Admin → Settings → General → Enable New Sign Ups.
 - **Ollama API connection:** keep it off. Ollama only serves `embeddinggemma`, which can't
   chat. RAG embeddings use `RAG_OLLAMA_BASE_URL`, a separate setting. If it's on, it points
   at the default `host.docker.internal:11434`, which doesn't resolve, and every model-list
@@ -135,6 +142,22 @@ provider-side search, but OWUI doesn't send the request field that would trigger
 - **Cost:** search results become model input, often a few thousand tokens per search.
   That's about $0.001 on Quick but $0.02 or more on the €€€ models.
 
+## Mealie
+
+- **Configured in the UI, not compose.** Current Mealie has no `OPENAI_*` env vars; the
+  provider (base URL, key, model) is set per group under Group Settings → AI providers and
+  stored in the `mealie` database, so `postgres-backup` covers it. The key can't come from a
+  Docker secret.
+- **Provider:** base URL `https://router.requesty.ai/v1`, its own Requesty key **Mealie**,
+  model `azure/gpt-6-luna@westeurope`, used as both the default and the image provider.
+  It's EU, no retention, has vision and JSON-schema output, and costs $0.12/$0.60 per 1M
+  tokens.
+- **Image provider:** photo import needs one. Mealie reads the photo with the image
+  provider, then always builds the recipe with the default provider.
+- **No video import:** it needs an audio-transcription provider (`whisper-1`-style), and
+  Requesty's catalogue has no transcription models (checked 2026-11-25). Ollama here
+  serves only embeddings, so there's no local option either.
+
 ## Monitoring
 
 All panels are in the provisioned dashboards (`grafana/provisioning/dashboards/json`).
@@ -157,7 +180,7 @@ Notes:
 
 ## Models (Requesty)
 
-There are two Requesty keys, **Mem0** and **OpenWebUI**, so spend shows per caller. Each
+There are three Requesty keys, **Mem0**, **OpenWebUI** and **Mealie**, so spend shows per caller. Each
 model must be approved on the key that uses it (Requesty's Model Library or the key's
 access list). Otherwise calls fail with 403 "model not approved for this API key".
 

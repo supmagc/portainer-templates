@@ -221,7 +221,7 @@ services:
       - TZ=${APP_TIMEZONE}
       - HOME=/app/backend/data
       - WEBUI_URL=https://openwebui.${NETWORK_DOMAIN}
-      - CORS_ALLOW_ORIGIN=https://openwebui.${NETWORK_DOMAIN}
+      - CORS_ALLOW_ORIGIN=https://openwebui.${NETWORK_DOMAIN};https://openwebui.bellecerise.be
       - WEBUI_SECRET_KEY_FILE=/run/secrets/openwebui-secret-key
       - DEFAULT_USER_ROLE=pending
       - ENABLE_OLLAMA_API=false

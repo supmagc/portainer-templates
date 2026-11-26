@@ -1,0 +1,28 @@
+http:
+  routers:
+    openwebui-public:
+      rule: "Host(`openwebui.bellecerise.be`)"
+      entryPoints:
+        - web-secure
+      tls:
+        certResolver: dynu
+      service: openwebui-public
+
+    openwebui-public-redirect:
+      rule: "Host(`openwebui.bellecerise.be`)"
+      entryPoints:
+        - web
+      middlewares:
+        - openwebui-public-https
+      service: openwebui-public
+
+  middlewares:
+    openwebui-public-https:
+      redirectScheme:
+        scheme: https
+
+  services:
+    openwebui-public:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.110:3080"
